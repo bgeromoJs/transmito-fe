@@ -57,6 +57,7 @@ const App: React.FC = () => {
           setMessage={setMessage}
           onLogout={handleLogout}
           onSubscribe={() => updateSubscription(true)}
+          onCancelSubscription={() => updateSubscription(false)}
         />
       )}
     </div>

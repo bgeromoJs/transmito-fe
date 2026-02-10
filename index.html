@@ -10,8 +10,10 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <!-- Google API Client Library -->
     <script src="https://apis.google.com/js/api.js" async defer></script>
+    <!-- Google Pay API -->
+    <script src="https://pay.google.com/gp/p/js/pay.js" async defer></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
         body {
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
@@ -20,6 +22,12 @@
         }
         #root {
             min-height: 100vh;
+        }
+        .glass-menu {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
     </style>
     <script type="importmap">
