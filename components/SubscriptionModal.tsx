@@ -7,16 +7,33 @@ interface Plan {
   id: string;
   name: string;
   price: string;
-  priceId: string; // ID do Preço no Dashboard do Stripe (ex: price_123...)
+  priceId: string; 
+  productId: string;
   period: string;
   description: string;
   tag?: string;
 }
 
 const PLANS: Plan[] = [
-  { id: 'monthly', name: 'Plano Mensal', price: '1,00', priceId: 'price_MOCK_MONTHLY', period: '/mês', description: 'Flexibilidade total mês a mês.' },
-  { id: 'quarterly', name: 'Plano Trimestral', price: '10,00', priceId: 'price_MOCK_QUARTERLY', period: '/3 meses', description: 'Economize significativamente no trimestre.', tag: 'Popular' },
-  { id: 'annual', name: 'Plano Anual', price: '15,00', priceId: 'price_MOCK_ANNUAL', period: '/ano', description: 'O melhor custo-benefício absoluto.', tag: 'Melhor Preço' }
+  { 
+    id: 'monthly', 
+    name: 'Plano Mensal', 
+    price: '14,90', 
+    priceId: 'price_1SzQaqE5GnqfcrPP9IKVwC4G', 
+    productId: 'prod_TxLHXz2H4j8gKx',
+    period: '/mês', 
+    description: 'Flexibilidade total mês a mês.' 
+  },
+  { 
+    id: 'quarterly', 
+    name: 'Plano Trimestral', 
+    price: '39,90', 
+    priceId: 'price_1SzQfPE5GnqfcrPPxlWPQejR', 
+    productId: 'prod_TxLHXz2H4j8gKx',
+    period: '/3 meses', 
+    description: 'Melhor custo-benefício para envios recorrentes.', 
+    tag: 'Mais Popular' 
+  }
 ];
 
 interface SubscriptionModalProps {
@@ -27,7 +44,7 @@ interface SubscriptionModalProps {
 
 export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, onConfirm }) => {
   const [step, setStep] = useState<CheckoutStep>('SELECTION');
-  const [selectedPlan, setSelectedPlan] = useState<Plan>(PLANS[1]);
+  const [selectedPlan, setSelectedPlan] = useState<Plan>(PLANS[0]);
   const [stripeError, setStripeError] = useState<string | null>(null);
   const [isStripeLoading, setIsStripeLoading] = useState(false);
   
@@ -36,18 +53,20 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
   const cardElementRef = useRef<any>(null);
   const cardMountRef = useRef<HTMLDivElement>(null);
 
+  // Reset de estado ao fechar o modal
   useEffect(() => {
     if (!isOpen) {
       const timer = setTimeout(() => {
         setStep('SELECTION');
         setStripeError(null);
         setIsStripeLoading(false);
-        setSelectedPlan(PLANS[1]);
+        setSelectedPlan(PLANS[0]);
       }, 300);
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
+  // Inicializa o Stripe quando o passo do gateway é aberto
   useEffect(() => {
     if (step === 'STRIPE_GATEWAY' && isOpen && !stripeRef.current) {
       const publicKey = process.env.STRIPE_PUBLIC_KEY;
@@ -79,7 +98,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
           });
         }
       } catch (e) {
-        setStripeError("Erro ao carregar o gateway.");
+        console.error("Erro ao inicializar Stripe Elements:", e);
+        setStripeError("Erro ao carregar o gateway de pagamento.");
       }
     }
 
@@ -99,32 +119,29 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
     setStripeError(null);
 
     try {
-      // 1. O Stripe valida o cartão e gera um PaymentMethod
+      // 1. O Stripe valida o cartão e gera um PaymentMethod localmente
       const { paymentMethod, error } = await stripeRef.current.createPaymentMethod({
         type: 'card',
         card: cardElementRef.current,
+        billing_details: {
+          // Aqui você poderia passar dados do usuário logado se necessário
+        }
       });
 
       if (error) {
         setStripeError(error.message);
         setIsStripeLoading(false);
       } else {
-        console.log('Token de Pagamento Gerado:', paymentMethod.id);
+        // 2. Log de simulação de envio das opções configuradas
+        console.log('--- SIMULAÇÃO DE PAGAMENTO ---');
+        console.log('PaymentMethod ID:', paymentMethod.id);
+        console.log('Price ID enviado:', selectedPlan.priceId);
+        console.log('Product ID associado:', selectedPlan.productId);
+        console.log('Valor:', selectedPlan.price);
+        
         setStep('PROCESSING');
         
-        /**
-         * 2. INTEGRAÇÃO COM BACKEND (Onde o valor é definido)
-         * Aqui você enviaria os dados para sua API:
-         * 
-         * await fetch('/api/subscribe', {
-         *   method: 'POST',
-         *   body: JSON.stringify({
-         *     paymentMethodId: paymentMethod.id,
-         *     priceId: selectedPlan.priceId // O backend usa este ID para saber o valor real
-         *   })
-         * });
-         */
-
+        // Simulação final: Como não há backend, assumimos sucesso após gerar o ID do Stripe
         setTimeout(() => {
           setStep('SUCCESS');
           setTimeout(() => {
@@ -134,7 +151,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
         }, 3000);
       }
     } catch (e) {
-      setStripeError("Erro inesperado.");
+      setStripeError("Erro inesperado ao processar o pagamento.");
       setIsStripeLoading(false);
     }
   };
@@ -145,6 +162,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md transition-all duration-500">
       <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
         
+        {/* Header Visual */}
         <div className="bg-slate-50 px-8 py-6 border-b border-slate-100 flex justify-between items-center">
           <div>
             <h3 className="text-xl font-black text-slate-800 tracking-tight">Assinatura Transmito</h3>
@@ -195,8 +213,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setStep('SELECTION')} className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl">Voltar</button>
-                <button onClick={() => setStep('METHOD')} className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl">Confirmar</button>
+                <button onClick={() => setStep('SELECTION')} className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl transition-all active:scale-95">Voltar</button>
+                <button onClick={() => setStep('METHOD')} className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl active:scale-95">Confirmar</button>
               </div>
             </div>
           )}
@@ -204,7 +222,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
           {step === 'METHOD' && (
             <div className="space-y-6 animate-in slide-in-from-right-4">
               <div className="flex items-center justify-between">
-                <h4 className="text-lg font-bold text-slate-800">Selecione o Método</h4>
+                <h4 className="text-lg font-bold text-slate-800">Método de Pagamento</h4>
                 <button onClick={() => setStep('SELECTION')} className="text-blue-600 font-black text-xs uppercase tracking-widest hover:underline flex items-center gap-1">
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7"/></svg>
                   Alterar Plano
@@ -235,6 +253,10 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7"/></svg>
                   Alterar Método
                 </button>
+                <div className="flex gap-2">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" className="h-4 opacity-50" />
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" className="h-4 opacity-50" />
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -251,7 +273,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                 <button
                   onClick={handlePayment}
                   disabled={isStripeLoading}
-                  className="w-full py-5 bg-[#635BFF] hover:bg-[#5851e0] disabled:bg-slate-200 text-white font-black rounded-2xl shadow-xl text-lg flex items-center justify-center gap-3 transition-all"
+                  className="w-full py-5 bg-[#635BFF] hover:bg-[#5851e0] disabled:bg-slate-200 text-white font-black rounded-2xl shadow-xl text-lg flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
                 >
                   {isStripeLoading ? (
                     <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -259,6 +281,10 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                     <span>Pagar R$ {selectedPlan.price}</span>
                   )}
                 </button>
+                
+                <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  🔒 Pagamento 100% Seguro via Stripe
+                </p>
               </div>
             </div>
           )}
@@ -272,17 +298,22 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                    <svg className="w-10 h-10" viewBox="0 0 40 40" fill="currentColor"><path d="M18.1 19.3c0-2.3 1.9-3 4.2-3 1.9 0 4 .5 5.6 1.4V13c-1.8-.7-3.9-1-5.9-1-5.4 0-9.4 2.8-9.4 7.6 0 7.4 10.2 6.2 10.2 11.2 0 2.5-2.1 3.2-4.6 3.2-2.3 0-4.8-.8-6.6-1.8V38c2.1 1 4.7 1.4 7.1 1.4 5.7 0 9.8-2.8 9.8-8 0-7.8-10.4-6.4-10.4-11.3z"/></svg>
                 </div>
               </div>
-              <h3 className="text-2xl font-black text-slate-900">Validando Pagamento...</h3>
+              <div>
+                <h3 className="text-2xl font-black text-slate-900">Validando Pagamento...</h3>
+                <p className="text-slate-400 font-bold text-sm mt-2">Processando IDs do Stripe e Gateway</p>
+              </div>
             </div>
           )}
 
           {step === 'SUCCESS' && (
             <div className="py-10 text-center space-y-8 animate-in zoom-in">
-              <div className="mx-auto w-32 h-32 bg-green-500 text-white rounded-full flex items-center justify-center shadow-2xl">
+              <div className="mx-auto w-32 h-32 bg-green-500 text-white rounded-full flex items-center justify-center shadow-2xl shadow-green-200">
                 <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" /></svg>
               </div>
-              <h3 className="text-4xl font-black text-slate-900">Sucesso!</h3>
-              <p className="text-slate-500 font-medium text-lg">Plano ativado instantaneamente.</p>
+              <div className="space-y-2">
+                <h3 className="text-4xl font-black text-slate-900">Sucesso!</h3>
+                <p className="text-slate-500 font-medium text-lg">Seu plano Pro foi ativado!</p>
+              </div>
             </div>
           )}
         </div>
