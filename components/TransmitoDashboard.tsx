@@ -4,6 +4,7 @@ import { UserProfile, Contact } from '../types';
 import { ContactTable } from './ContactTable';
 import { FileUpload } from './FileUpload';
 import { SubscriptionModal } from './SubscriptionModal';
+import { GoogleGenAI } from "@google/genai";
 
 interface DashboardProps {
   user: UserProfile;
@@ -25,7 +26,45 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   onSubscribe
 }) => {
   const [isSending, setIsSending] = useState(false);
+  const [isImproving, setIsImproving] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const improveMessageWithAI = async () => {
+    if (!message.trim()) {
+      alert("Escreva algo primeiro para que eu possa melhorar!");
+      return;
+    }
+
+    setIsImproving(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      // Usamos uma instrução mais rígida para garantir apenas o texto da mensagem e variação
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Reescreva esta mensagem de WhatsApp para ser profissional, cordial e focada em conversão. 
+        REGRAS CRÍTICAS:
+        1. Retorne APENAS o texto da mensagem reescrita.
+        2. Não adicione saudações como "Aqui está sua sugestão" ou explicações.
+        3. Mantenha obrigatoriamente o marcador {nome}.
+        4. Gere uma variação ÚNICA e criativa, diferente de padrões comuns.
+        
+        Mensagem atual: "${message}"`,
+        config: {
+          temperature: 1, // Aumenta a criatividade para cada clique ser diferente
+        }
+      });
+
+      const newText = response.text?.trim();
+      if (newText) {
+        setMessage(newText);
+      }
+    } catch (error) {
+      console.error("Erro na IA:", error);
+      alert("Houve um erro ao conectar com a IA. Verifique sua conexão.");
+    } finally {
+      setIsImproving(false);
+    }
+  };
 
   const handleTransmit = () => {
     if (!user.isSubscribed) {
@@ -68,7 +107,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       {/* Header */}
       <header className="sticky top-2 z-40 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-slate-200 p-3 sm:p-4 flex flex-row items-center justify-between gap-2">
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Avatar com Borda Amarela/Dourada se Premium */}
           <div className={`relative w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden flex items-center justify-center border-2 transition-all duration-500 ${
             user.isSubscribed 
               ? 'border-yellow-400 ring-4 ring-yellow-400/20 shadow-[0_0_15px_rgba(250,204,21,0.4)]' 
@@ -149,14 +187,11 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         </div>
       </header>
 
-      {/* Main Content Area com Bloqueio se não for Premium */}
+      {/* Main Content Area */}
       <main className="relative">
         {!user.isSubscribed && (
           <div className="absolute inset-0 z-30 flex items-center justify-center">
-            {/* Overlay Bloqueador de Clique */}
             <div className="absolute inset-0 bg-slate-50/10 cursor-not-allowed"></div>
-            
-            {/* Mensagem de Paywall Centralizada */}
             <div className="relative z-40 bg-white p-8 sm:p-10 rounded-[2.5rem] shadow-2xl border border-yellow-100 text-center space-y-6 max-w-sm mx-4 animate-in zoom-in-95 duration-300">
               <div className="w-20 h-20 bg-yellow-100 text-yellow-600 rounded-3xl flex items-center justify-center mx-auto shadow-lg shadow-yellow-100/50 rotate-3">
                  <svg className="w-10 h-10" fill="currentColor" viewBox="0 0 20 20">
@@ -182,24 +217,50 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         <div className={`flex flex-col lg:grid lg:grid-cols-12 gap-4 sm:gap-6 transition-all duration-700 ${!user.isSubscribed ? 'blur-md grayscale-[0.2] pointer-events-none select-none opacity-60' : ''}`}>
           {/* Left Column */}
           <div className="lg:col-span-5 space-y-4 sm:space-y-6 order-1">
-            <section className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-100">
-              <h3 className="text-base sm:text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
-                  </svg>
-                </div>
-                Conteúdo
-              </h3>
+            <section className="bg-white rounded-3xl p-5 sm:p-6 shadow-sm border border-slate-100 relative group">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-50 rounded-lg text-blue-600">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+                    </svg>
+                  </div>
+                  Conteúdo
+                </h3>
+                
+                {/* Botão de IA - Melhorar Texto */}
+                <button
+                  onClick={improveMessageWithAI}
+                  disabled={isImproving || !message}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider transition-all shadow-sm ${
+                    isImproving 
+                    ? 'bg-slate-100 text-slate-400' 
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:scale-105 active:scale-95 shadow-indigo-100'
+                  }`}
+                  title="Clique para gerar uma nova versão profissional da mensagem"
+                >
+                  {isImproving ? (
+                    <div className="w-3 h-3 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin"></div>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                      </svg>
+                      {message ? 'Reescrever Mensagem' : 'Gerar com IA'}
+                    </>
+                  )}
+                </button>
+              </div>
+
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Olá {nome}, tudo bem?..."
-                className="w-full h-32 sm:h-48 p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all resize-none text-slate-700 text-sm sm:text-base"
+                className="w-full h-32 sm:h-48 p-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all resize-none text-slate-700 text-sm sm:text-base leading-relaxed"
               ></textarea>
               <div className="mt-3 flex items-center gap-2 p-2 bg-blue-50/50 rounded-xl border border-blue-100/50">
                  <span className="text-[10px] sm:text-xs text-blue-600 leading-tight italic">
-                  Dica: Onde escrever <span className="font-bold">{'{nome}'}</span> o app trocará pelo nome do contato.
+                  Dica: Clique em <b>Reescrever</b> para que a IA crie abordagens diferentes para sua mensagem.
                  </span>
               </div>
             </section>

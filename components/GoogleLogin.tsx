@@ -27,15 +27,20 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
     }
   };
 
+  const handleMockLogin = () => {
+    onLogin({
+      name: "Usuário de Teste",
+      email: "teste@transmito.com",
+      picture: "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
+      isSubscribed: false
+    });
+  };
+
   useEffect(() => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     
-    // Verifica se o ID é o placeholder ou está vazio
     if (!clientId || clientId.includes("SEU_ID_DO_CLIENTE_AQUI")) {
-      setError({
-        title: "Configuração Necessária",
-        msg: "Você ainda não configurou um Client ID válido no arquivo env/.env.local."
-      });
+      console.warn("Google Client ID não configurado. Use o modo de teste.");
       return;
     }
 
@@ -58,13 +63,11 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
             client_id: clientId,
             callback: handleCredentialResponse,
             auto_select: false,
-            // Log de erro aprimorado
             error_callback: (err: any) => {
-               console.error("Google Auth Error:", err);
                if (err.type === 'invalid_client') {
                  setError({
                    title: "Erro 401: Cliente Inválido",
-                   msg: "O ID do Cliente não foi reconhecido ou esta URL não está autorizada no Google Cloud Console."
+                   msg: "O ID do Cliente não foi reconhecido ou esta URL não está autorizada."
                  });
                }
             }
@@ -103,35 +106,35 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
           <p className="text-slate-500 text-lg">Envios em massa profissionais via WhatsApp.</p>
         </div>
 
-        {error ? (
-          <div className="p-6 bg-red-50 border border-red-100 rounded-2xl text-left space-y-3">
-            <h2 className="text-red-700 font-bold text-sm flex items-center gap-2">
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-              {error.title}
-            </h2>
-            <p className="text-xs text-red-600 leading-relaxed">{error.msg}</p>
-            <div className="pt-2 space-y-2">
-              <p className="text-[10px] font-bold text-red-400 uppercase">Como resolver:</p>
-              <ol className="text-[10px] text-red-500 space-y-1 list-decimal ml-4">
-                <li>Vá ao <b>Google Cloud Console</b>.</li>
-                <li>Em <b>Credenciais</b>, edite seu ID de Cliente OAuth 2.0.</li>
-                <li>Adicione <code>{window.location.origin}</code> às <b>Origens JavaScript autorizadas</b>.</li>
-                <li>Certifique-se que o ID no arquivo <code>env/.env.local</code> está correto.</li>
-              </ol>
-            </div>
+        <div className="space-y-4">
+          <div ref={buttonRef} className="w-full flex justify-center min-h-[40px]"></div>
+          
+          <div className="flex items-center gap-3">
+            <div className="h-px bg-slate-100 flex-1"></div>
+            <span className="text-[10px] font-black text-slate-300 uppercase">ou</span>
+            <div className="h-px bg-slate-100 flex-1"></div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            <div ref={buttonRef} className="w-full flex justify-center min-h-[40px]"></div>
-            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Autenticação Segura Google</p>
+
+          <button 
+            onClick={handleMockLogin}
+            className="w-full py-3.5 bg-slate-50 border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            Entrar em Modo de Teste
+          </button>
+        </div>
+
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-left">
+            <p className="text-[10px] text-red-600 leading-relaxed font-medium">{error.msg}</p>
           </div>
         )}
 
         <div className="pt-6 border-t border-slate-100">
           <p className="text-xs text-slate-400 leading-relaxed">
-            Ao entrar, você terá acesso ao painel de transmissão e gerenciamento de contatos.
+            Desenvolvido para facilitar sua comunicação profissional.
           </p>
         </div>
       </div>
