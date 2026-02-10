@@ -1,4 +1,3 @@
-
 import React, { useRef, useState, useEffect } from 'react';
 import { Contact } from '../types';
 
@@ -19,7 +18,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Carregar a GAPI para o Picker de forma segura
     const loadGapi = () => {
       if (window.gapi) {
         window.gapi.load('picker', () => {
@@ -72,11 +70,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   };
 
   const createPicker = (token: string) => {
-    const apiKey = process.env.API_KEY; // A chave de API do Google Cloud Console
+    const apiKey = process.env.API_KEY; 
     const clientId = process.env.GOOGLE_CLIENT_ID;
 
     if (!apiKey || !clientId) {
-      alert("Configuração incompleta: API_KEY ou GOOGLE_CLIENT_ID ausentes.");
+      alert("Erro: API_KEY ou GOOGLE_CLIENT_ID não configurados em env/.env.local");
       setIsDriveLoading(false);
       return;
     }
@@ -121,7 +119,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const openGoogleDrivePicker = () => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
-      alert("GOOGLE_CLIENT_ID não configurado.");
+      alert("GOOGLE_CLIENT_ID não configurado no arquivo env/.env.local.");
       return;
     }
 

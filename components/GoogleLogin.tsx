@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { UserProfile } from '../types';
 
@@ -28,12 +27,13 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
   };
 
   useEffect(() => {
-    // Busca o Client ID do ambiente. Em alguns bundlers (como Vite) pode ser import.meta.env.VITE_GOOGLE_CLIENT_ID
+    // Busca o Client ID do ambiente. Certifique-se de que o loader do seu ambiente (ex: Vite)
+    // esteja configurado para ler o arquivo env/.env.local
     const clientId = process.env.GOOGLE_CLIENT_ID;
     
     if (!clientId) {
-      setError("GOOGLE_CLIENT_ID não encontrado. Verifique seu arquivo .env ou variáveis de ambiente.");
-      console.error("GOOGLE_CLIENT_ID is missing.");
+      setError("Configuração ausente: GOOGLE_CLIENT_ID não encontrado. Defina-o em env/.env.local");
+      console.error("GOOGLE_CLIENT_ID is missing in process.env.");
       return;
     }
 
@@ -67,7 +67,6 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
           });
         }
       } else {
-        // Tentar novamente em breve caso o script ainda não tenha carregado totalmente
         setTimeout(initializeGoogleLogin, 100);
       }
     };
@@ -90,7 +89,7 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
 
         {error ? (
           <div className="p-4 bg-red-50 border border-red-100 rounded-2xl">
-            <p className="text-xs text-red-600 font-medium">{error}</p>
+            <p className="text-xs text-red-600 font-medium whitespace-pre-wrap">{error}</p>
           </div>
         ) : (
           <div className="space-y-4">
