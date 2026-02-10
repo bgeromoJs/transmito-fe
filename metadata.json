@@ -1,0 +1,8 @@
+{
+  "name": "Transmito",
+  "description": "A powerful broadcast tool for WhatsApp. Import contacts from CSV or Google Drive, craft your message, and transmit to your list with ease.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
