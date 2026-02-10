@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { UserProfile } from '../types';
 
@@ -7,7 +8,7 @@ interface GoogleLoginProps {
 
 export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
   const buttonRef = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{title: string, msg: string} | null>(null);
 
   const decodeJwt = (token: string) => {
     try {
@@ -27,13 +28,14 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
   };
 
   useEffect(() => {
-    // Busca o Client ID do ambiente. Certifique-se de que o loader do seu ambiente (ex: Vite)
-    // esteja configurado para ler o arquivo env/.env.local
     const clientId = process.env.GOOGLE_CLIENT_ID;
     
-    if (!clientId) {
-      setError("Configuração ausente: GOOGLE_CLIENT_ID não encontrado. Defina-o em env/.env.local");
-      console.error("GOOGLE_CLIENT_ID is missing in process.env.");
+    // Verifica se o ID é o placeholder ou está vazio
+    if (!clientId || clientId.includes("SEU_ID_DO_CLIENTE_AQUI")) {
+      setError({
+        title: "Configuração Necessária",
+        msg: "Você ainda não configurou um Client ID válido no arquivo env/.env.local."
+      });
       return;
     }
 
@@ -51,20 +53,34 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
 
     const initializeGoogleLogin = () => {
       if (window.google?.accounts?.id) {
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          callback: handleCredentialResponse,
-          auto_select: false,
-        });
-
-        if (buttonRef.current) {
-          window.google.accounts.id.renderButton(buttonRef.current, {
-            theme: 'outline',
-            size: 'large',
-            width: '100%',
-            text: 'signin_with',
-            shape: 'rectangular',
+        try {
+          window.google.accounts.id.initialize({
+            client_id: clientId,
+            callback: handleCredentialResponse,
+            auto_select: false,
+            // Log de erro aprimorado
+            error_callback: (err: any) => {
+               console.error("Google Auth Error:", err);
+               if (err.type === 'invalid_client') {
+                 setError({
+                   title: "Erro 401: Cliente Inválido",
+                   msg: "O ID do Cliente não foi reconhecido ou esta URL não está autorizada no Google Cloud Console."
+                 });
+               }
+            }
           });
+
+          if (buttonRef.current) {
+            window.google.accounts.id.renderButton(buttonRef.current, {
+              theme: 'outline',
+              size: 'large',
+              width: '100%',
+              text: 'signin_with',
+              shape: 'rectangular',
+            });
+          }
+        } catch (e) {
+          console.error("Erro ao inicializar Google Login:", e);
         }
       } else {
         setTimeout(initializeGoogleLogin, 100);
@@ -88,8 +104,23 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
         </div>
 
         {error ? (
-          <div className="p-4 bg-red-50 border border-red-100 rounded-2xl">
-            <p className="text-xs text-red-600 font-medium whitespace-pre-wrap">{error}</p>
+          <div className="p-6 bg-red-50 border border-red-100 rounded-2xl text-left space-y-3">
+            <h2 className="text-red-700 font-bold text-sm flex items-center gap-2">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              {error.title}
+            </h2>
+            <p className="text-xs text-red-600 leading-relaxed">{error.msg}</p>
+            <div className="pt-2 space-y-2">
+              <p className="text-[10px] font-bold text-red-400 uppercase">Como resolver:</p>
+              <ol className="text-[10px] text-red-500 space-y-1 list-decimal ml-4">
+                <li>Vá ao <b>Google Cloud Console</b>.</li>
+                <li>Em <b>Credenciais</b>, edite seu ID de Cliente OAuth 2.0.</li>
+                <li>Adicione <code>{window.location.origin}</code> às <b>Origens JavaScript autorizadas</b>.</li>
+                <li>Certifique-se que o ID no arquivo <code>env/.env.local</code> está correto.</li>
+              </ol>
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
