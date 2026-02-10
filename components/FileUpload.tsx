@@ -1,14 +1,58 @@
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { Contact } from '../types';
 
 interface FileUploadProps {
   onDataExtracted: (contacts: Contact[]) => void;
 }
 
+declare global {
+  interface Window {
+    gapi: any;
+    google: any;
+  }
+}
+
 export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDriveLoading, setIsDriveLoading] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Carregar a GAPI para o Picker
+    if (window.gapi) {
+      window.gapi.load('picker', () => {
+        console.log('GAPI Picker carregado');
+      });
+    }
+  }, []);
+
+  const parseCsv = (csvText: string) => {
+    const lines = csvText.split('\n');
+    const contacts: Contact[] = [];
+    
+    lines.forEach((line, index) => {
+      if (!line.trim()) return;
+      if (index === 0 && (line.toLowerCase().includes('nome') || line.toLowerCase().includes('phone'))) return;
+      
+      const parts = line.split(/[;,]/);
+      if (parts.length >= 2) {
+        const name = parts[0].trim().replace(/"/g, '');
+        const phone = parts[1].trim().replace(/\D/g, '');
+        
+        if (name && phone) {
+          contacts.push({
+            id: `file-${index}-${Date.now()}`,
+            name,
+            phone
+          });
+        }
+      }
+    });
+
+    onDataExtracted(contacts);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -22,44 +66,79 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     reader.readAsText(file);
   };
 
-  const parseCsv = (csvText: string) => {
-    const lines = csvText.split('\n');
-    const contacts: Contact[] = [];
-    
-    lines.forEach((line, index) => {
-      if (index === 0 && (line.toLowerCase().includes('nome') || line.toLowerCase().includes('phone'))) return;
-      
-      const parts = line.split(/[;,]/);
-      if (parts.length >= 2) {
-        const name = parts[0].trim();
-        const phone = parts[1].trim().replace(/\D/g, '');
-        
-        if (name && phone) {
-          contacts.push({
-            id: `csv-${index}-${Date.now()}`,
-            name,
-            phone
-          });
-        }
-      }
-    });
+  const createPicker = (token: string) => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      alert("API_KEY não configurada.");
+      setIsDriveLoading(false);
+      return;
+    }
 
-    onDataExtracted(contacts);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    const view = new window.google.picker.DocsView(window.google.picker.ViewId.DOCS)
+      .setMimeTypes('text/csv,application/vnd.ms-excel');
+
+    const picker = new window.google.picker.PickerBuilder()
+      .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
+      .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
+      .setDeveloperKey(apiKey)
+      .setAppId(process.env.GOOGLE_CLIENT_ID?.split('-')[0] || '')
+      .setOAuthToken(token)
+      .addView(view)
+      .setCallback(async (data: any) => {
+        if (data.action === window.google.picker.Action.PICKED) {
+          const fileId = data.docs[0].id;
+          await downloadDriveFile(fileId, token);
+        }
+        if (data.action === window.google.picker.Action.CANCEL || data.action === window.google.picker.Action.PICKED) {
+          setIsDriveLoading(false);
+        }
+      })
+      .build();
+
+    picker.setVisible(true);
+  };
+
+  const downloadDriveFile = async (fileId: string, token: string) => {
+    try {
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const text = await response.text();
+      parseCsv(text);
+    } catch (error) {
+      console.error("Erro ao baixar arquivo do Drive:", error);
+      alert("Erro ao acessar o arquivo selecionado.");
+    }
   };
 
   const openGoogleDrivePicker = () => {
     setIsDriveLoading(true);
-    // Simulação robusta para mobile
-    setTimeout(() => {
-      const mockContacts: Contact[] = [
-        { id: 'drive-1', name: 'Alice Silva', phone: '5511999999991' },
-        { id: 'drive-2', name: 'Bruno Santos', phone: '5511999999992' },
-        { id: 'drive-3', name: 'Carla Oliveira', phone: '5511999999993' },
-      ];
-      onDataExtracted(mockContacts);
+    
+    if (!window.google?.accounts?.oauth2) {
+      alert("Biblioteca do Google não carregada.");
       setIsDriveLoading(false);
-    }, 1200);
+      return;
+    }
+
+    const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.readonly',
+      callback: (response: any) => {
+        if (response.error !== undefined) {
+          setIsDriveLoading(false);
+          console.error(response);
+          return;
+        }
+        setAccessToken(response.access_token);
+        createPicker(response.access_token);
+      },
+    });
+
+    if (accessToken) {
+      createPicker(accessToken);
+    } else {
+      tokenClient.requestAccessToken();
+    }
   };
 
   return (
@@ -74,7 +153,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           </svg>
         </div>
         <p className="text-xs sm:text-sm font-bold text-slate-600 group-hover:text-blue-600">Subir Arquivo CSV</p>
-        <p className="text-[10px] text-slate-400 mt-0.5">Clique para selecionar</p>
+        <p className="text-[10px] text-slate-400 mt-0.5">Clique para selecionar localmente</p>
         <input 
           type="file" 
           ref={fileInputRef} 
@@ -86,7 +165,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
       <div className="flex items-center gap-3">
         <div className="h-px bg-slate-100 flex-1"></div>
-        <span className="text-[10px] font-black text-slate-300 uppercase">ou use</span>
+        <span className="text-[10px] font-black text-slate-300 uppercase">ou</span>
         <div className="h-px bg-slate-100 flex-1"></div>
       </div>
 
@@ -100,7 +179,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
         ) : (
           <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="G-Drive" className="w-5 h-5" />
         )}
-        Google Drive
+        Importar do Google Drive
       </button>
     </div>
   );
