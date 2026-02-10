@@ -9,6 +9,7 @@ export interface UserProfile {
   name: string;
   email: string;
   picture: string;
+  isSubscribed?: boolean;
 }
 
 export interface AppState {

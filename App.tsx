@@ -11,7 +11,6 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    // Check for existing session in local storage
     const savedUser = localStorage.getItem('transmito_user');
     if (savedUser) {
       setUser(JSON.parse(savedUser));
@@ -27,6 +26,14 @@ const App: React.FC = () => {
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('transmito_user');
+  };
+
+  const updateSubscription = (status: boolean) => {
+    if (user) {
+      const updatedUser = { ...user, isSubscribed: status };
+      setUser(updatedUser);
+      localStorage.setItem('transmito_user', JSON.stringify(updatedUser));
+    }
   };
 
   if (isInitializing) {
@@ -48,7 +55,8 @@ const App: React.FC = () => {
           setContacts={setContacts}
           message={message}
           setMessage={setMessage}
-          onLogout={handleLogout} 
+          onLogout={handleLogout}
+          onSubscribe={() => updateSubscription(true)}
         />
       )}
     </div>
