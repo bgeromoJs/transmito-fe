@@ -13,9 +13,9 @@ interface Plan {
 }
 
 const PLANS: Plan[] = [
-  { id: 'monthly', name: 'Plano Mensal', price: '49,90', period: '/mês', description: 'Flexibilidade total mês a mês.' },
-  { id: 'quarterly', name: 'Plano Trimestral', price: '119,70', period: '/3 meses', description: 'Economize 20% no trimestre.', tag: 'Popular' },
-  { id: 'annual', name: 'Plano Anual', price: '399,00', period: '/ano', description: 'O melhor custo-benefício.', tag: 'Melhor Preço' }
+  { id: 'monthly', name: 'Plano Mensal', price: '1,00', period: '/mês', description: 'Flexibilidade total mês a mês.' },
+  { id: 'quarterly', name: 'Plano Trimestral', price: '10,00', period: '/3 meses', description: 'Economize significativamente no trimestre.', tag: 'Popular' },
+  { id: 'annual', name: 'Plano Anual', price: '15,00', period: '/ano', description: 'O melhor custo-benefício absoluto.', tag: 'Melhor Preço' }
 ];
 
 interface SubscriptionModalProps {
@@ -181,7 +181,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
 
           {step === 'METHOD' && (
             <div className="space-y-6 animate-in slide-in-from-right-4">
-              <h4 className="text-lg font-bold text-slate-800">Selecione o Método</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-lg font-bold text-slate-800">Selecione o Método</h4>
+                <button onClick={handleBack} className="text-blue-600 font-black text-xs uppercase tracking-widest hover:underline flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7"/></svg>
+                  Alterar Plano
+                </button>
+              </div>
+              
               <div className="grid grid-cols-1 gap-4">
                 <button onClick={() => setStep('STRIPE_GATEWAY')} className="p-6 border-2 border-slate-100 hover:border-[#635BFF] hover:bg-[#635BFF]/5 rounded-2xl transition-all flex items-center justify-between group">
                   <div className="flex items-center gap-4">
