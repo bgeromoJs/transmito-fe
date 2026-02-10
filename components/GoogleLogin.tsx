@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { UserProfile } from '../types';
 
 interface GoogleLoginProps {
@@ -8,6 +8,7 @@ interface GoogleLoginProps {
 
 export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
   const buttonRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const decodeJwt = (token: string) => {
     try {
@@ -27,10 +28,12 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
   };
 
   useEffect(() => {
+    // Busca o Client ID do ambiente. Em alguns bundlers (como Vite) pode ser import.meta.env.VITE_GOOGLE_CLIENT_ID
     const clientId = process.env.GOOGLE_CLIENT_ID;
     
     if (!clientId) {
-      console.error("GOOGLE_CLIENT_ID não configurado nas variáveis de ambiente.");
+      setError("GOOGLE_CLIENT_ID não encontrado. Verifique seu arquivo .env ou variáveis de ambiente.");
+      console.error("GOOGLE_CLIENT_ID is missing.");
       return;
     }
 
@@ -41,28 +44,35 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
           name: payload.name,
           email: payload.email,
           picture: payload.picture,
-          isSubscribed: false // Padrão inicial
+          isSubscribed: false
         });
       }
     };
 
-    if (window.google) {
-      window.google.accounts.id.initialize({
-        client_id: clientId,
-        callback: handleCredentialResponse,
-        auto_select: false,
-      });
-
-      if (buttonRef.current) {
-        window.google.accounts.id.renderButton(buttonRef.current, {
-          theme: 'outline',
-          size: 'large',
-          width: '100%',
-          text: 'signin_with',
-          shape: 'rectangular',
+    const initializeGoogleLogin = () => {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleCredentialResponse,
+          auto_select: false,
         });
+
+        if (buttonRef.current) {
+          window.google.accounts.id.renderButton(buttonRef.current, {
+            theme: 'outline',
+            size: 'large',
+            width: '100%',
+            text: 'signin_with',
+            shape: 'rectangular',
+          });
+        }
+      } else {
+        // Tentar novamente em breve caso o script ainda não tenha carregado totalmente
+        setTimeout(initializeGoogleLogin, 100);
       }
-    }
+    };
+
+    initializeGoogleLogin();
   }, [onLogin]);
 
   return (
@@ -78,10 +88,16 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
           <p className="text-slate-500 text-lg">Envios em massa profissionais via WhatsApp.</p>
         </div>
 
-        <div className="space-y-4">
-          <div ref={buttonRef} className="w-full flex justify-center"></div>
-          <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Autenticação Segura Google</p>
-        </div>
+        {error ? (
+          <div className="p-4 bg-red-50 border border-red-100 rounded-2xl">
+            <p className="text-xs text-red-600 font-medium">{error}</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div ref={buttonRef} className="w-full flex justify-center min-h-[40px]"></div>
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Autenticação Segura Google</p>
+          </div>
+        )}
 
         <div className="pt-6 border-t border-slate-100">
           <p className="text-xs text-slate-400 leading-relaxed">

@@ -19,12 +19,17 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
-    // Carregar a GAPI para o Picker
-    if (window.gapi) {
-      window.gapi.load('picker', () => {
-        console.log('GAPI Picker carregado');
-      });
-    }
+    // Carregar a GAPI para o Picker de forma segura
+    const loadGapi = () => {
+      if (window.gapi) {
+        window.gapi.load('picker', () => {
+          console.log('GAPI Picker módulo carregado');
+        });
+      } else {
+        setTimeout(loadGapi, 500);
+      }
+    };
+    loadGapi();
   }, []);
 
   const parseCsv = (csvText: string) => {
@@ -67,9 +72,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   };
 
   const createPicker = (token: string) => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      alert("API_KEY não configurada.");
+    const apiKey = process.env.API_KEY; // A chave de API do Google Cloud Console
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+
+    if (!apiKey || !clientId) {
+      alert("Configuração incompleta: API_KEY ou GOOGLE_CLIENT_ID ausentes.");
       setIsDriveLoading(false);
       return;
     }
@@ -79,9 +86,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
     const picker = new window.google.picker.PickerBuilder()
       .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
-      .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
       .setDeveloperKey(apiKey)
-      .setAppId(process.env.GOOGLE_CLIENT_ID?.split('-')[0] || '')
+      .setAppId(clientId.split('-')[0])
       .setOAuthToken(token)
       .addView(view)
       .setCallback(async (data: any) => {
@@ -103,25 +109,32 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       const response = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!response.ok) throw new Error('Falha ao baixar arquivo');
       const text = await response.text();
       parseCsv(text);
     } catch (error) {
       console.error("Erro ao baixar arquivo do Drive:", error);
-      alert("Erro ao acessar o arquivo selecionado.");
+      alert("Erro ao acessar o arquivo selecionado no Drive.");
     }
   };
 
   const openGoogleDrivePicker = () => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      alert("GOOGLE_CLIENT_ID não configurado.");
+      return;
+    }
+
     setIsDriveLoading(true);
     
     if (!window.google?.accounts?.oauth2) {
-      alert("Biblioteca do Google não carregada.");
+      alert("Biblioteca de autenticação do Google não carregada.");
       setIsDriveLoading(false);
       return;
     }
 
     const tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_id: clientId,
       scope: 'https://www.googleapis.com/auth/drive.readonly',
       callback: (response: any) => {
         if (response.error !== undefined) {
