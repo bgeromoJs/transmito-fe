@@ -94,7 +94,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       try { 
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); 
       } catch (err) {
-        console.warn("Wake Lock não suportado ou negado");
+        console.warn("Wake Lock não suportado");
       }
     }
   };
@@ -107,21 +107,21 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
   const notifyProgress = (sent: number, total: number, isFinished = false, isStopped = false) => {
     if ("Notification" in window && Notification.permission === "granted") {
-      let title = 'Progresso Transmito 🚀';
-      let body = `Enviando: ${sent}/${total} (${Math.round((sent/total)*100)}%)`;
+      let title = 'Transmito 🚀';
+      let body = `Progresso: ${sent}/${total}`;
 
       if (isFinished) {
-        title = 'Transmissão Concluída ✅';
-        body = `Sucesso total: ${sent}/${total} mensagens enviadas.`;
+        title = 'Concluído ✅';
+        body = `Sucesso: ${sent}/${total} mensagens.`;
       } else if (isStopped) {
-        title = 'Transmissão Interrompida ⚠️';
-        body = `O envio foi parado pelo usuário. Enviadas: ${sent}/${total}.`;
+        title = 'Parado ⚠️';
+        body = `Interrompido em: ${sent}/${total}.`;
       }
 
       new Notification(title, { 
         body, 
-        tag: 'transmission-progress',
-        silent: false,
+        tag: 'transmito-status',
+        silent: true,
         icon: 'https://img.icons8.com/fluency/192/000000/chat.png' 
       });
     }
@@ -131,10 +131,10 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const apiUrl = `https://wasenderapi.com/api/send-message`;
     
-    // MOCK: Para o usuário de teste ou se o token não estiver presente, simulamos sucesso garantido
+    // MOCK: Para o usuário de teste ou se o token não estiver configurado corretamente
     if (!token || token.includes('TOKEN') || user.email === 'teste@transmito.com') {
-      await new Promise(r => setTimeout(r, 600)); // Simulação rápida
-      return true; // Sucesso 100% no mock para evitar frustração em testes
+      await new Promise(r => setTimeout(r, 700));
+      return true; 
     }
     
     try {
@@ -145,7 +145,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       });
       return response.ok;
     } catch (e) { 
-      console.error("Erro no envio real:", e);
       return false; 
     }
   };
@@ -164,12 +163,17 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     
     setContacts(prev => prev.map(c => ({ ...c, status: undefined })));
     setTransmission({ total: contacts.length, sent: 0, errors: 0, currentName: 'Iniciando...', isCompleted: false, failedContacts: [] });
-    notifyProgress(0, contacts.length);
+    
+    // Feedback tátil inicial
+    if ("vibrate" in navigator) navigator.vibrate(50);
+
+    let localSent = 0;
+    let localErrors = 0;
 
     for (let i = 0; i < contacts.length; i++) {
       if (shouldStopRef.current) {
         setTransmission(prev => prev ? { ...prev, isCompleted: true, isStopped: true, currentName: 'Interrompido' } : null);
-        notifyProgress(transmission?.sent || 0, contacts.length, false, true);
+        notifyProgress(localSent, contacts.length, false, true);
         break;
       }
 
@@ -177,30 +181,35 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       const personalizedMsg = message.replace(/{name}/gi, contact.name);
       
       const success = await sendDirectMessage(contact.phone, personalizedMsg);
+      
+      if (success) {
+        localSent++;
+        if ("vibrate" in navigator) navigator.vibrate([30]);
+      } else {
+        localErrors++;
+      }
 
       setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, status: success ? 'sent' : 'failed' } : c));
       
       setTransmission(prev => {
         if (!prev) return null;
-        const newSent = success ? prev.sent + 1 : prev.sent;
-        const newErrors = success ? prev.errors : prev.errors + 1;
-        
-        notifyProgress(newSent + newErrors, prev.total);
-        
         return {
           ...prev,
-          sent: newSent,
-          errors: newErrors,
+          sent: localSent,
+          errors: localErrors,
           failedContacts: success ? prev.failedContacts : [...prev.failedContacts, contact],
           currentName: contact.name
         };
       });
 
+      // Notificação em tempo real (limitada para não sobrecarregar no mobile)
+      if (i % 2 === 0 || i === contacts.length - 1) {
+        notifyProgress(localSent + localErrors, contacts.length);
+      }
+
       if (i < contacts.length - 1 && !shouldStopRef.current) {
         let waitSeconds = isDelayEnabled ? delay : 1;
-        
-        // No modo teste, o delay é curto
-        if (user.email === 'teste@transmito.com') waitSeconds = 2; 
+        if (user.email === 'teste@transmito.com') waitSeconds = 2; // Rápido no teste
 
         for (let s = waitSeconds; s > 0; s--) {
           if (shouldStopRef.current) break;
@@ -213,7 +222,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
     setTransmission(prev => {
       if (prev && !prev.isStopped) {
-        notifyProgress(prev.sent, prev.total, true);
+        notifyProgress(localSent, contacts.length, true);
         return { ...prev, isCompleted: true, currentName: 'Finalizado' };
       }
       return prev;
@@ -246,7 +255,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 text-center space-y-6">
             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">
-              {transmission.isStopped ? "Envio Interrompido" : transmission.isCompleted ? "Transmissão Concluída" : "Transmissão Ativa"}
+              {transmission.isStopped ? "Interrompido" : transmission.isCompleted ? "Concluído" : "Transmitindo"}
             </h3>
             <div className="space-y-4">
               <div className="w-full bg-slate-100 h-8 rounded-full overflow-hidden relative border border-slate-200 shadow-inner">
@@ -258,7 +267,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
               {!transmission.isCompleted && !transmission.isStopped && (
                 <div className="flex justify-between items-center px-4 py-3 bg-blue-50 rounded-2xl border border-blue-100 animate-pulse">
                   <div className="text-left">
-                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Próximo envio em</p>
+                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Aguardando intervalo</p>
                     <p className="text-2xl font-black text-blue-600 leading-none">{nextSendCountdown}s</p>
                   </div>
                   <ChatIcon className="text-blue-300 w-8 h-8" />
@@ -269,19 +278,20 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             <div className="grid grid-cols-3 gap-3 bg-slate-50 p-6 rounded-3xl border border-slate-100">
               <div><p className="text-[9px] font-black text-slate-400 uppercase">Sucesso</p><p className="text-2xl font-black text-green-600">{transmission.sent}</p></div>
               <div className="border-x border-slate-200"><p className="text-[9px] font-black text-slate-400 uppercase">Falhas</p><p className="text-2xl font-black text-red-500">{transmission.errors}</p></div>
-              <div><p className="text-[9px] font-black text-slate-400 uppercase">Restante</p><p className="text-2xl font-black text-slate-300">{(transmission.total - (transmission.sent + transmission.errors))}</p></div>
+              <div><p className="text-[9px] font-black text-slate-400 uppercase">Total</p><p className="text-2xl font-black text-slate-300">{transmission.total}</p></div>
             </div>
 
             <div className="flex flex-col gap-3">
               {!transmission.isCompleted && !transmission.isStopped && (
                 <>
                   <div className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-sm uppercase tracking-widest border border-slate-200">
-                    Aguarde o processamento...
+                    Aguarde o Envio...
                   </div>
                   <button 
                     onClick={handleStopTransmission}
-                    className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-200"
+                    className="w-full py-5 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-200 flex items-center justify-center gap-2"
                   >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
                     PARAR ENVIO AGORA
                   </button>
                 </>
@@ -289,7 +299,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
               {(transmission.isCompleted || transmission.isStopped) && (
                 <button 
                   onClick={() => setTransmission(null)} 
-                  className="w-full py-4 bg-slate-900 text-white shadow-lg rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:bg-black"
+                  className="w-full py-5 bg-slate-900 text-white shadow-lg rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:bg-black"
                 >
                   FECHAR E CONTINUAR
                 </button>
@@ -309,9 +319,9 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
               <div className="absolute top-full left-0 mt-2 w-56 glass-menu rounded-2xl shadow-xl p-2 z-50 animate-in slide-in-from-top-2">
                 <button onClick={handleInstallClick} className="w-full text-left p-3 text-xs font-black text-blue-600 hover:bg-blue-50 rounded-xl mb-1 flex items-center gap-2">
                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                   BAIXAR APLICATIVO
+                   BAIXAR APP
                 </button>
-                <button onClick={onLogout} className="w-full text-left p-3 text-xs font-black text-red-500 hover:bg-red-50 rounded-xl">DESCONECTAR</button>
+                <button onClick={onLogout} className="w-full text-left p-3 text-xs font-black text-red-500 hover:bg-red-50 rounded-xl">SAIR</button>
               </div>
             )}
           </div>
@@ -369,8 +379,8 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         <div className="lg:col-span-7">
           <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[400px]">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Fila de Transmissão ({contacts.length})</h3>
-               {contacts.length > 0 && <button onClick={() => setContacts([])} className="text-[10px] font-black text-red-400 uppercase hover:text-red-500">Limpar Fila</button>}
+               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Fila ({contacts.length})</h3>
+               {contacts.length > 0 && <button onClick={() => setContacts([])} className="text-[10px] font-black text-red-400 uppercase hover:text-red-500">Limpar</button>}
             </div>
             <div className="flex-1 overflow-auto bg-slate-50/20">
               {contacts.length > 0 ? <ContactTable contacts={contacts} /> : <div className="flex flex-col items-center justify-center h-full text-slate-300 space-y-3 opacity-50"><ChatIcon className="w-12 h-12" /><p className="text-[10px] font-black uppercase tracking-widest text-center">Importe uma lista para começar.</p></div>}
