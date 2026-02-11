@@ -81,18 +81,10 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const getProgressBar = (percent: number) => {
-    const size = 10;
-    const filled = Math.round(size * (percent / 100));
-    return "[" + "■".repeat(filled) + "□".repeat(size - filled) + "]";
-  };
-
   const notifyProgress = (sent: number, total: number, isFinished = false) => {
     if ("Notification" in window && Notification.permission === "granted") {
-      const percent = Math.round((sent / total) * 100);
-      const bar = getProgressBar(percent);
-      new Notification(isFinished ? 'Transmissão Concluída ✅' : 'Enviando Mensagens... 🚀', { 
-        body: isFinished ? `Sucesso: ${sent}/${total}` : `${bar} ${percent}%\nEnviando em segundo plano...`, 
+      new Notification(isFinished ? 'Transmissão Concluída ✅' : 'Progresso Transmito 🚀', { 
+        body: isFinished ? `Sucesso: ${sent}/${total}` : `Enviando mensagens: ${sent}/${total}`, 
         tag: 'transmission-progress',
         silent: true,
         icon: 'https://img.icons8.com/fluency/192/000000/chat.png' 
@@ -151,9 +143,8 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
       if (i < contacts.length - 1) {
         let waitSeconds = isDelayEnabled ? delay : 1;
-        // Lógica de Inteligência Humana: varia ± 20% do tempo ou min 5s aleatórios
         if (isDelayEnabled && isHumanMode) {
-          const jitter = Math.floor(Math.random() * 11) - 5; // ± 5 segundos
+          const jitter = Math.floor(Math.random() * 11) - 5; 
           waitSeconds = Math.max(5, waitSeconds + jitter);
         }
         for (let s = waitSeconds; s > 0; s--) {
@@ -171,8 +162,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     setIsSending(false);
     releaseWakeLock();
   };
-
-  const progressPercent = transmission ? Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100) : 0;
 
   const improveMessageWithAI = async () => {
     if (!message.trim()) return;
@@ -196,18 +185,15 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       {transmission && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 text-center space-y-6">
-            <h3 className="text-xl font-black text-slate-800">Transmissão Ativa</h3>
-            
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Transmissão Ativa</h3>
             <div className="space-y-4">
               <div className="w-full bg-slate-100 h-8 rounded-full overflow-hidden relative border border-slate-200 shadow-inner">
-                <div className="h-full bg-blue-600 transition-all duration-500 ease-out" style={{ width: `${progressPercent}%` }} />
-                <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white mix-blend-difference">{progressPercent}% COMPLETO</span>
+                <div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100)}%` }} />
               </div>
-              
               {!transmission.isCompleted && (
                 <div className="flex justify-between items-center px-4 py-3 bg-blue-50 rounded-2xl border border-blue-100 animate-pulse">
                   <div className="text-left">
-                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Próximo disparo em</p>
+                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Próximo envio em</p>
                     <p className="text-2xl font-black text-blue-600 leading-none">{nextSendCountdown}s</p>
                   </div>
                   <ChatIcon className="text-blue-300 w-8 h-8" />
@@ -221,8 +207,8 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
               <div><p className="text-[9px] font-black text-slate-400 uppercase">Restante</p><p className="text-2xl font-black text-slate-300">{(transmission.total - (transmission.sent + transmission.errors))}</p></div>
             </div>
 
-            <button onClick={() => setTransmission(null)} disabled={!transmission.isCompleted} className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${transmission.isCompleted ? 'bg-slate-900 text-white shadow-lg active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-              {transmission.isCompleted ? "Fechar e Continuar" : "Aguarde a conclusão..."}
+            <button onClick={() => setTransmission(null)} disabled={!transmission.isCompleted} className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${transmission.isCompleted ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
+              {transmission.isCompleted ? "Fechar e Continuar" : "Aguarde..."}
             </button>
           </div>
         </div>
@@ -240,39 +226,33 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-md">
-              <ChatIcon className="text-white w-5 h-5" />
-            </div>
-            <span className="font-black text-slate-800 tracking-tight">Transmito</span>
-          </div>
+          <span className="font-black text-slate-800 tracking-tighter text-lg px-2">Transmito</span>
         </div>
-        <button onClick={handleTransmit} disabled={isSending || contacts.length === 0} className={`px-8 py-3 rounded-full font-black text-white text-sm transition-all shadow-md ${isSending ? 'bg-slate-300 animate-pulse' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
-          {isSending ? "ENVIANDO..." : `DISPARAR (${contacts.length})`}
+        <button onClick={handleTransmit} disabled={isSending || contacts.length === 0} className={`px-10 py-3.5 rounded-full font-black text-white text-sm transition-all shadow-md ${isSending ? 'bg-slate-300 animate-pulse' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
+          {isSending ? "ENVIANDO..." : `TRANSMITIR (${contacts.length})`}
         </button>
       </header>
 
       <main className="grid lg:grid-cols-12 gap-6">
         <div className="lg:col-span-5 space-y-6">
+          {/* ANTI-BAN BLOCK AT THE TOP */}
           <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Módulos Anti-Ban</h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
                 <div className="flex flex-col">
                   <span className="text-xs font-black text-blue-700">Intervalo Inteligente</span>
-                  <span className="text-[9px] text-blue-400 font-bold uppercase">Previne bloqueios de spam</span>
+                  <span className="text-[9px] text-blue-400 font-bold uppercase">Previne bloqueios</span>
                 </div>
-                <input type="checkbox" checked={isDelayEnabled} onChange={() => setIsDelayEnabled(!isDelayEnabled)} className="w-6 h-6 rounded-md border-blue-200 text-blue-600" />
+                <input type="checkbox" checked={isDelayEnabled} onChange={() => setIsDelayEnabled(!isDelayEnabled)} className="w-6 h-6 rounded-md border-blue-200 text-blue-600 cursor-pointer" />
               </div>
-
               <div className={`flex items-center justify-between p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 ${!isDelayEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
                 <div className="flex flex-col">
                   <span className="text-xs font-black text-indigo-700">Inteligência Humana</span>
-                  <span className="text-[9px] text-indigo-400 font-bold uppercase">Varia o tempo aleatoriamente</span>
+                  <span className="text-[9px] text-indigo-400 font-bold uppercase">Simula comportamento real</span>
                 </div>
-                <input type="checkbox" checked={isHumanMode} onChange={() => setIsHumanMode(!isHumanMode)} className="w-6 h-6 rounded-md border-indigo-200 text-indigo-600" />
+                <input type="checkbox" checked={isHumanMode} onChange={() => setIsHumanMode(!isHumanMode)} className="w-6 h-6 rounded-md border-indigo-200 text-indigo-600 cursor-pointer" />
               </div>
-
               <div className={!isDelayEnabled ? 'opacity-30 pointer-events-none' : ''}>
                 <div className="flex justify-between text-[10px] font-black text-slate-500 mb-2"><span>TEMPO MÉDIO</span><span className="text-blue-600 font-black">{delay}s</span></div>
                 <input type="range" min="10" max="300" step="10" value={delay} onChange={(e) => setDelay(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
@@ -282,8 +262,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
           <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-4">
             <div className="flex justify-between items-center">
-               <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Mensagem</h3>
-               <button onClick={improveMessageWithAI} disabled={isImproving || !message} className="text-[10px] font-black text-blue-600 uppercase hover:underline">{aiStatus}</button>
+               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Mensagem</h3>
+               <button 
+                 onClick={improveMessageWithAI} 
+                 disabled={isImproving || !message} 
+                 className="px-4 py-2 bg-slate-900 hover:bg-black text-[10px] font-black text-white uppercase rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
+               >
+                 {aiStatus}
+               </button>
             </div>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Olá {name}, como vai?..." className="w-full h-40 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-400 resize-none transition-all" />
           </section>
@@ -296,11 +282,11 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         <div className="lg:col-span-7">
           <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[400px]">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-               <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">Fila de Disparo ({contacts.length})</h3>
-               {contacts.length > 0 && <button onClick={() => setContacts([])} className="text-[10px] font-black text-red-400 uppercase hover:text-red-500">Remover Todos</button>}
+               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Fila de Transmissão ({contacts.length})</h3>
+               {contacts.length > 0 && <button onClick={() => setContacts([])} className="text-[10px] font-black text-red-400 uppercase hover:text-red-500">Limpar Fila</button>}
             </div>
             <div className="flex-1 overflow-auto bg-slate-50/20">
-              {contacts.length > 0 ? <ContactTable contacts={contacts} /> : <div className="flex flex-col items-center justify-center h-full text-slate-300 space-y-3 opacity-50"><ChatIcon className="w-12 h-12" /><p className="text-[10px] font-black uppercase tracking-widest text-center">Nenhum contato na fila.<br/>Importe uma lista para começar.</p></div>}
+              {contacts.length > 0 ? <ContactTable contacts={contacts} /> : <div className="flex flex-col items-center justify-center h-full text-slate-300 space-y-3 opacity-50"><ChatIcon className="w-12 h-12" /><p className="text-[10px] font-black uppercase tracking-widest text-center">Importe uma lista para começar.</p></div>}
             </div>
           </section>
         </div>
