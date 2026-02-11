@@ -56,7 +56,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
     const pickerCallback = (data: any) => {
       if (data[window.google.picker.Response.ACTION] === window.google.picker.Action.PICKED) {
-        setError("Integração completa requer OAuth. Use CSV local por agora.");
+        setError("Integração via Google Drive requer OAuth. Use CSV local por enquanto.");
       }
       if (data[window.google.picker.Response.ACTION] === window.google.picker.Action.CANCEL || 
           data[window.google.picker.Response.ACTION] === window.google.picker.Action.PICKED) {
@@ -249,7 +249,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       )}
 
       {isAnalyzing && (
-        <div className="fixed inset-0 z-[120] bg-slate-900/98 flex flex-col items-center justify-center text-white p-6 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[120] bg-slate-900 flex flex-col items-center justify-center text-white p-6">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-6" />
           <h2 className="text-xl font-black tracking-tight mb-2">IA Transmito</h2>
           <p className="font-bold uppercase tracking-widest text-[11px] text-slate-400">Processando sua lista...</p>

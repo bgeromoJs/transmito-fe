@@ -23,6 +23,7 @@ interface TransmissionStatus {
   errors: number;
   currentName: string;
   isCompleted: boolean;
+  isStopped?: boolean;
   failedContacts: Contact[];
 }
 
@@ -52,11 +53,18 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   const [delay, setDelay] = useState(60);
   const [isDelayEnabled, setIsDelayEnabled] = useState(true);
   const [isHumanMode, setIsHumanMode] = useState(true);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const wakeLockRef = useRef<any>(null);
+  const shouldStopRef = useRef<boolean>(false);
 
   useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission();
     }
@@ -66,12 +74,28 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } else {
+      alert("Para instalar no iPhone: Toque no ícone de Compartilhar e selecione 'Adicionar à Tela de Início'.\n\nNo Android: Toque nos três pontos do navegador e selecione 'Instalar aplicativo'.");
+    }
+  };
 
   const requestWakeLock = async () => {
     if ('wakeLock' in navigator) {
-      try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (err) {}
+      try { 
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); 
+      } catch (err) {
+        console.warn("Wake Lock não suportado ou negado");
+      }
     }
   };
 
@@ -81,12 +105,23 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const notifyProgress = (sent: number, total: number, isFinished = false) => {
+  const notifyProgress = (sent: number, total: number, isFinished = false, isStopped = false) => {
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(isFinished ? 'Transmissão Concluída ✅' : 'Progresso Transmito 🚀', { 
-        body: isFinished ? `Sucesso: ${sent}/${total}` : `Enviando mensagens: ${sent}/${total}`, 
+      let title = 'Progresso Transmito 🚀';
+      let body = `Enviando: ${sent}/${total} (${Math.round((sent/total)*100)}%)`;
+
+      if (isFinished) {
+        title = 'Transmissão Concluída ✅';
+        body = `Sucesso total: ${sent}/${total} mensagens enviadas.`;
+      } else if (isStopped) {
+        title = 'Transmissão Interrompida ⚠️';
+        body = `O envio foi parado pelo usuário. Enviadas: ${sent}/${total}.`;
+      }
+
+      new Notification(title, { 
+        body, 
         tag: 'transmission-progress',
-        silent: true,
+        silent: false,
         icon: 'https://img.icons8.com/fluency/192/000000/chat.png' 
       });
     }
@@ -95,10 +130,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   const sendDirectMessage = async (to: string, text: string): Promise<boolean> => {
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const apiUrl = `https://wasenderapi.com/api/send-message`;
-    if (!token || token.includes('TOKEN')) {
-      await new Promise(r => setTimeout(r, 1200));
-      return Math.random() > 0.1;
+    
+    // MOCK: Para o usuário de teste ou se o token não estiver presente, simulamos sucesso garantido
+    if (!token || token.includes('TOKEN') || user.email === 'teste@transmito.com') {
+      await new Promise(r => setTimeout(r, 600)); // Simulação rápida
+      return true; // Sucesso 100% no mock para evitar frustração em testes
     }
+    
     try {
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -106,7 +144,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         body: JSON.stringify({ to, text })
       });
       return response.ok;
-    } catch (e) { return false; }
+    } catch (e) { 
+      console.error("Erro no envio real:", e);
+      return false; 
+    }
+  };
+
+  const handleStopTransmission = () => {
+    shouldStopRef.current = true;
   };
 
   const handleTransmit = async () => {
@@ -114,6 +159,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     if (!message.trim() || contacts.length === 0) return alert('Configure a mensagem e carregue contatos.');
 
     setIsSending(true);
+    shouldStopRef.current = false;
     await requestWakeLock();
     
     setContacts(prev => prev.map(c => ({ ...c, status: undefined })));
@@ -121,17 +167,26 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     notifyProgress(0, contacts.length);
 
     for (let i = 0; i < contacts.length; i++) {
+      if (shouldStopRef.current) {
+        setTransmission(prev => prev ? { ...prev, isCompleted: true, isStopped: true, currentName: 'Interrompido' } : null);
+        notifyProgress(transmission?.sent || 0, contacts.length, false, true);
+        break;
+      }
+
       const contact = contacts[i];
       const personalizedMsg = message.replace(/{name}/gi, contact.name);
       
       const success = await sendDirectMessage(contact.phone, personalizedMsg);
 
       setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, status: success ? 'sent' : 'failed' } : c));
+      
       setTransmission(prev => {
         if (!prev) return null;
         const newSent = success ? prev.sent + 1 : prev.sent;
         const newErrors = success ? prev.errors : prev.errors + 1;
+        
         notifyProgress(newSent + newErrors, prev.total);
+        
         return {
           ...prev,
           sent: newSent,
@@ -141,13 +196,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         };
       });
 
-      if (i < contacts.length - 1) {
+      if (i < contacts.length - 1 && !shouldStopRef.current) {
         let waitSeconds = isDelayEnabled ? delay : 1;
-        if (isDelayEnabled && isHumanMode) {
-          const jitter = Math.floor(Math.random() * 11) - 5; 
-          waitSeconds = Math.max(5, waitSeconds + jitter);
-        }
+        
+        // No modo teste, o delay é curto
+        if (user.email === 'teste@transmito.com') waitSeconds = 2; 
+
         for (let s = waitSeconds; s > 0; s--) {
+          if (shouldStopRef.current) break;
           setNextSendCountdown(s);
           await new Promise(r => setTimeout(r, 1000));
         }
@@ -156,9 +212,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
 
     setTransmission(prev => {
-      if (prev) notifyProgress(prev.sent, prev.total, true);
-      return prev ? { ...prev, isCompleted: true, currentName: 'Finalizado' } : null;
+      if (prev && !prev.isStopped) {
+        notifyProgress(prev.sent, prev.total, true);
+        return { ...prev, isCompleted: true, currentName: 'Finalizado' };
+      }
+      return prev;
     });
+    
     setIsSending(false);
     releaseWakeLock();
   };
@@ -185,12 +245,17 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       {transmission && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 text-center space-y-6">
-            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Transmissão Ativa</h3>
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">
+              {transmission.isStopped ? "Envio Interrompido" : transmission.isCompleted ? "Transmissão Concluída" : "Transmissão Ativa"}
+            </h3>
             <div className="space-y-4">
               <div className="w-full bg-slate-100 h-8 rounded-full overflow-hidden relative border border-slate-200 shadow-inner">
-                <div className="h-full bg-blue-600 transition-all duration-500" style={{ width: `${Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100)}%` }} />
+                <div 
+                  className={`h-full transition-all duration-500 ${transmission.isStopped ? 'bg-orange-500' : transmission.isCompleted ? 'bg-green-500' : 'bg-blue-600'}`} 
+                  style={{ width: `${Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100)}%` }} 
+                />
               </div>
-              {!transmission.isCompleted && (
+              {!transmission.isCompleted && !transmission.isStopped && (
                 <div className="flex justify-between items-center px-4 py-3 bg-blue-50 rounded-2xl border border-blue-100 animate-pulse">
                   <div className="text-left">
                     <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Próximo envio em</p>
@@ -207,9 +272,29 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
               <div><p className="text-[9px] font-black text-slate-400 uppercase">Restante</p><p className="text-2xl font-black text-slate-300">{(transmission.total - (transmission.sent + transmission.errors))}</p></div>
             </div>
 
-            <button onClick={() => setTransmission(null)} disabled={!transmission.isCompleted} className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-widest transition-all ${transmission.isCompleted ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}>
-              {transmission.isCompleted ? "Fechar e Continuar" : "Aguarde..."}
-            </button>
+            <div className="flex flex-col gap-3">
+              {!transmission.isCompleted && !transmission.isStopped && (
+                <>
+                  <div className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-sm uppercase tracking-widest border border-slate-200">
+                    Aguarde o processamento...
+                  </div>
+                  <button 
+                    onClick={handleStopTransmission}
+                    className="w-full py-4 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-200"
+                  >
+                    PARAR ENVIO AGORA
+                  </button>
+                </>
+              )}
+              {(transmission.isCompleted || transmission.isStopped) && (
+                <button 
+                  onClick={() => setTransmission(null)} 
+                  className="w-full py-4 bg-slate-900 text-white shadow-lg rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:bg-black"
+                >
+                  FECHAR E CONTINUAR
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -222,11 +307,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             </button>
             {showProfileMenu && (
               <div className="absolute top-full left-0 mt-2 w-56 glass-menu rounded-2xl shadow-xl p-2 z-50 animate-in slide-in-from-top-2">
+                <button onClick={handleInstallClick} className="w-full text-left p-3 text-xs font-black text-blue-600 hover:bg-blue-50 rounded-xl mb-1 flex items-center gap-2">
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                   BAIXAR APLICATIVO
+                </button>
                 <button onClick={onLogout} className="w-full text-left p-3 text-xs font-black text-red-500 hover:bg-red-50 rounded-xl">DESCONECTAR</button>
               </div>
             )}
           </div>
-          <span className="font-black text-slate-800 tracking-tighter text-lg px-2">Transmito</span>
         </div>
         <button onClick={handleTransmit} disabled={isSending || contacts.length === 0} className={`px-10 py-3.5 rounded-full font-black text-white text-sm transition-all shadow-md ${isSending ? 'bg-slate-300 animate-pulse' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
           {isSending ? "ENVIANDO..." : `TRANSMITIR (${contacts.length})`}
@@ -235,7 +323,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
       <main className="grid lg:grid-cols-12 gap-6">
         <div className="lg:col-span-5 space-y-6">
-          {/* ANTI-BAN BLOCK AT THE TOP */}
           <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Módulos Anti-Ban</h3>
             <div className="space-y-4">

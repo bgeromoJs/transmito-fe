@@ -38,11 +38,13 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
   };
 
   const handleMockLogin = () => {
+    // Definimos isSubscribed como true no modo demo para permitir o teste da transmissão
     onLogin({
       name: "Usuário de Teste",
       email: "teste@transmito.com",
       picture: "https://api.dicebear.com/7.x/avataaars/svg?seed=Felix",
-      isSubscribed: false
+      isSubscribed: true,
+      expiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     });
   };
 
@@ -63,7 +65,6 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
     };
 
     const initializeGoogleLogin = () => {
-      // Access google via window with proper type casting or declaration
       if (window.google?.accounts?.id) {
         window.google.accounts.id.initialize({
           client_id: clientId,
