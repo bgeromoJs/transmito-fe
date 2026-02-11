@@ -58,6 +58,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   const menuRef = useRef<HTMLDivElement>(null);
   const wakeLockRef = useRef<any>(null);
   const shouldStopRef = useRef<boolean>(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
@@ -137,11 +138,12 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
     
     try {
+      abortControllerRef.current = new AbortController();
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ to, text }),
-        signal: AbortSignal.timeout(10000) // Timeout para não travar o loop
+        signal: abortControllerRef.current.signal
       });
       return response.ok;
     } catch (e) { 
@@ -151,8 +153,12 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
   const handleStopTransmission = () => {
     shouldStopRef.current = true;
-    // Feedback imediato na UI alterando o estado da transmissão
-    setTransmission(prev => prev ? { ...prev, isStopped: true, currentName: 'Parando...' } : null);
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    // Feedback visual imediato
+    setTransmission(prev => prev ? { ...prev, isStopped: true, currentName: 'Parando agora...' } : null);
+    setNextSendCountdown(0);
   };
 
   const handleTransmit = async () => {
@@ -180,7 +186,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
     try {
       for (let i = 0; i < contacts.length; i++) {
-        // Checagem CRÍTICA no início de cada iteração
         if (shouldStopRef.current) break;
 
         const contact = contacts[i];
@@ -188,7 +193,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         
         const success = await sendDirectMessage(contact.phone, personalizedMsg);
         
-        // Checagem imediata após o await do envio
         if (shouldStopRef.current) break;
 
         if (success) {
@@ -215,14 +219,20 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
           notifyProgress(localSent + localErrors, contacts.length);
         }
 
-        // Intervalo entre mensagens
+        // BLOCO DO CONTADOR: Correção aqui
         if (i < contacts.length - 1 && !shouldStopRef.current) {
           let waitSeconds = isDelayEnabled ? delay : 1;
-          if (user.email === 'teste@transmito.com') waitSeconds = 2;
+          if (user.email === 'teste@transmito.com') waitSeconds = 5; // Tempo visível para teste
+
+          // Define o estado inicial do countdown antes do loop de espera
+          setNextSendCountdown(waitSeconds);
 
           for (let s = waitSeconds; s > 0; s--) {
-            // Checagem DENTRO do loop de contagem regressiva
-            if (shouldStopRef.current) break;
+            if (shouldStopRef.current) {
+              setNextSendCountdown(0);
+              break;
+            }
+            // Atualiza o estado a cada segundo
             setNextSendCountdown(s);
             await new Promise(r => setTimeout(r, 1000));
           }
@@ -232,7 +242,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         if (shouldStopRef.current) break;
       }
     } finally {
-      // Bloco de finalização garantido
       const wasStopped = shouldStopRef.current;
       setTransmission(prev => {
         if (!prev) return null;
@@ -283,13 +292,18 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
                   style={{ width: `${Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100)}%` }} 
                 />
               </div>
+              
               {!transmission.isCompleted && !transmission.isStopped && (
-                <div className="flex justify-between items-center px-4 py-3 bg-blue-50 rounded-2xl border border-blue-100 animate-pulse">
-                  <div className="text-left">
-                    <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Aguardando intervalo</p>
-                    <p className="text-2xl font-black text-blue-600 leading-none">{nextSendCountdown}s</p>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center px-4 py-4 bg-blue-50 rounded-2xl border-2 border-blue-100 animate-pulse">
+                    <div className="text-left">
+                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Intervalo de Segurança</p>
+                      <p className="text-3xl font-black text-blue-600 leading-none">
+                        {nextSendCountdown > 0 ? `${nextSendCountdown}s` : 'Enviando...'}
+                      </p>
+                    </div>
+                    <ChatIcon className="text-blue-300 w-10 h-10" />
                   </div>
-                  <ChatIcon className="text-blue-300 w-8 h-8" />
                 </div>
               )}
             </div>
@@ -303,9 +317,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             <div className="flex flex-col gap-3">
               {!transmission.isCompleted && !transmission.isStopped && (
                 <>
-                  <div className="w-full py-4 bg-slate-100 text-slate-400 rounded-2xl font-black text-sm uppercase tracking-widest border border-slate-200">
-                    Aguarde o Envio...
-                  </div>
                   <button 
                     onClick={handleStopTransmission}
                     className="w-full py-5 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-200 flex items-center justify-center gap-2"
@@ -313,6 +324,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
                     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
                     PARAR ENVIO AGORA
                   </button>
+                  <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Aguarde o processamento</p>
                 </>
               )}
               {(transmission.isCompleted || transmission.isStopped) && (

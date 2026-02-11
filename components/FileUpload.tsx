@@ -25,8 +25,27 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Função auxiliar para padronizar o telefone (Foco: Brasil +55)
+  const formatPhoneNumber = (rawPhone: string): string => {
+    // Remove tudo que não for dígito
+    const digits = rawPhone.replace(/\D/g, '');
+    
+    // Se o número tem 10 ou 11 dígitos (DDD + número), adiciona o 55 (Brasil)
+    if (digits.length === 10 || digits.length === 11) {
+      return `55${digits}`;
+    }
+    
+    // Se já tiver 12 ou 13 dígitos e começar com 55, retorna como está
+    if ((digits.length === 12 || digits.length === 13) && digits.startsWith('55')) {
+      return digits;
+    }
+
+    // Caso contrário, retorna os dígitos puros (pode ser internacional ou incompleto)
+    return digits;
+  };
+
   const downloadTemplate = () => {
-    const csvContent = "name;phone\nJoão Silva;5511999999999\nMaria Souza;5511888888888";
+    const csvContent = "name;phone\nJoão Silva;11999999999\nMaria Souza;5511888888888";
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -133,7 +152,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
         contents: {
           parts: [
             { inlineData: { mimeType: 'image/jpeg', data: base64 } },
-            { text: "Extraia nome e telefone desta lista de contatos em JSON. Formate o telefone com 55 + DDD + Numero." }
+            { text: "Extraia nome e telefone desta lista de contatos em JSON. IMPORTANTE: Retorne o telefone EXATAMENTE como extraído ou formate com 55 + DDD + Numero." }
           ]
         },
         config: { 
@@ -149,7 +168,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
         }
       });
       const data = JSON.parse(response.text || "[]");
-      onDataExtracted(data.map((c: any) => ({ ...c, id: Math.random().toString(36).substr(2, 9) })));
+      onDataExtracted(data.map((c: any) => ({ 
+        id: Math.random().toString(36).substr(2, 9),
+        name: c.name?.trim(),
+        phone: formatPhoneNumber(c.phone)
+      })));
     } catch (e) {
       setError("Erro na análise da imagem.");
     } finally { setIsAnalyzing(false); }
@@ -166,9 +189,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
         const separator = lines[0].includes(';') ? ';' : ',';
         const rawList = lines.slice(1).map(line => {
           const parts = line.split(separator);
-          return { id: Math.random().toString(36).substr(2, 9), name: parts[0]?.trim(), phone: parts[1]?.trim().replace(/\D/g, '') };
+          const name = parts[0]?.trim();
+          const rawPhone = parts[1]?.trim() || "";
+          return { 
+            id: Math.random().toString(36).substr(2, 9), 
+            name: name, 
+            phone: formatPhoneNumber(rawPhone) 
+          };
         }).filter(c => c.name && c.phone);
         onDataExtracted(rawList);
+        
+        // Limpa o input para permitir o mesmo arquivo novamente se necessário
+        if (fileInputRef.current) fileInputRef.current.value = "";
       };
       reader.readAsText(file);
     }
