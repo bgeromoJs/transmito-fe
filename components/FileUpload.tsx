@@ -262,7 +262,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       {isCameraActive && (
         <div className="fixed inset-0 z-[110] bg-black flex flex-col h-[100dvh] w-screen overflow-hidden">
           <div className="flex-none p-4 flex justify-between items-center bg-black/40 backdrop-blur-md z-20">
-            <button onClick={() => setIsCameraActive(false)} className="w-10 h-10 flex items-center justify-center bg-white/10 text-white rounded-full">
+            <button onClick={() => setIsCameraActive(false)} className="w-10 h-10 flex items-center justify-center bg-white/10 text-white rounded-full active:scale-95 transition-transform">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
             <div className="text-white text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 px-3 py-1.5 rounded-full shadow-lg">Lista na Moldura</div>
@@ -295,8 +295,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
             <div className="absolute inset-0 border-[4px] border-blue-600/20 rounded-full animate-pulse" />
             <div className="absolute inset-0 border-[4px] border-t-blue-500 rounded-full animate-spin" />
           </div>
-          <h2 className="text-2xl font-black mb-2 tracking-tighter">IA Processando Lista</h2>
-          <p className="text-slate-400 font-bold text-center max-w-xs leading-relaxed text-xs">Aguarde a extração de nomes e números...</p>
+          <h2 className="text-2xl font-black mb-2 tracking-tighter">IA Analisando Foto</h2>
+          <p className="text-slate-400 font-bold text-center max-w-xs leading-relaxed text-xs">Extraindo nomes e números via Visão Computacional...</p>
         </div>
       )}
 
