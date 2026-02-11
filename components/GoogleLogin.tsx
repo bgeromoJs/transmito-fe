@@ -2,9 +2,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { UserProfile } from '../types';
 
+// Declare google on window for TypeScript compatibility with Google Identity Services
+declare global {
+  interface Window {
+    google: any;
+  }
+}
+
 interface GoogleLoginProps {
   onLogin: (user: UserProfile) => void;
 }
+
+const LogoIcon = () => (
+  <svg className="w-12 h-12 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+  </svg>
+);
 
 export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
   const buttonRef = useRef<HTMLDivElement>(null);
@@ -21,10 +34,7 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
           .join('')
       );
       return JSON.parse(jsonPayload);
-    } catch (e) {
-      console.error("Erro ao decodificar JWT", e);
-      return null;
-    }
+    } catch (e) { return null; }
   };
 
   const handleMockLogin = () => {
@@ -38,11 +48,7 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
 
   useEffect(() => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
-    
-    if (!clientId || clientId.includes("SEU_ID_DO_CLIENTE_AQUI")) {
-      console.warn("Google Client ID não configurado. Use o modo de teste.");
-      return;
-    }
+    if (!clientId || clientId.includes("SEU_ID_DO_CLIENTE_AQUI")) return;
 
     const handleCredentialResponse = (response: any) => {
       const payload = decodeJwt(response.credential);
@@ -57,85 +63,55 @@ export const GoogleLogin: React.FC<GoogleLoginProps> = ({ onLogin }) => {
     };
 
     const initializeGoogleLogin = () => {
+      // Access google via window with proper type casting or declaration
       if (window.google?.accounts?.id) {
-        try {
-          window.google.accounts.id.initialize({
-            client_id: clientId,
-            callback: handleCredentialResponse,
-            auto_select: false,
-            error_callback: (err: any) => {
-               if (err.type === 'invalid_client') {
-                 setError({
-                   title: "Erro 401: Cliente Inválido",
-                   msg: "O ID do Cliente não foi reconhecido ou esta URL não está autorizada."
-                 });
-               }
-            }
+        window.google.accounts.id.initialize({
+          client_id: clientId,
+          callback: handleCredentialResponse,
+        });
+        if (buttonRef.current) {
+          window.google.accounts.id.renderButton(buttonRef.current, {
+            theme: 'outline',
+            size: 'large',
+            width: '100%',
+            text: 'signin_with',
+            shape: 'pill',
           });
-
-          if (buttonRef.current) {
-            window.google.accounts.id.renderButton(buttonRef.current, {
-              theme: 'outline',
-              size: 'large',
-              width: '100%',
-              text: 'signin_with',
-              shape: 'rectangular',
-            });
-          }
-        } catch (e) {
-          console.error("Erro ao inicializar Google Login:", e);
         }
       } else {
         setTimeout(initializeGoogleLogin, 100);
       }
     };
-
     initializeGoogleLogin();
   }, [onLogin]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-800 p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl p-8 text-center space-y-8">
-        <div className="space-y-3">
-          <div className="mx-auto w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-4">
-            <svg className="w-10 h-10 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-800 p-4">
+      <div className="max-w-md w-full bg-white rounded-[3rem] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.4)] p-10 sm:p-14 text-center space-y-10 animate-in fade-in zoom-in duration-700">
+        <div className="space-y-6">
+          <div className="mx-auto w-24 h-24 bg-blue-50 rounded-[2rem] flex items-center justify-center border-4 border-white shadow-xl shadow-blue-500/10 rotate-3">
+            <LogoIcon />
           </div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">Transmito</h1>
-          <p className="text-slate-500 text-lg">Envios em massa profissionais via WhatsApp.</p>
+          <div className="space-y-2">
+            <h1 className="text-4xl font-black text-slate-900 tracking-tight">Transmito</h1>
+            <p className="text-slate-400 font-bold text-xs uppercase tracking-[0.2em]">Broadcast Profissional</p>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          <div ref={buttonRef} className="w-full flex justify-center min-h-[40px]"></div>
+        <div className="space-y-6">
+          <div ref={buttonRef} className="w-full flex justify-center min-h-[50px]"></div>
           
-          <div className="flex items-center gap-3">
-            <div className="h-px bg-slate-100 flex-1"></div>
-            <span className="text-[10px] font-black text-slate-300 uppercase">ou</span>
-            <div className="h-px bg-slate-100 flex-1"></div>
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+            <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest"><span className="bg-white px-4 text-slate-300">Conexão Segura</span></div>
           </div>
 
           <button 
             onClick={handleMockLogin}
-            className="w-full py-3.5 bg-slate-50 border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+            className="w-full py-4 bg-slate-50 border border-slate-100 text-slate-500 font-bold text-xs uppercase tracking-widest rounded-full hover:bg-slate-100 transition-all active:scale-95"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-            </svg>
-            Entrar em Modo de Teste
+            Modo de Demonstração
           </button>
-        </div>
-
-        {error && (
-          <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-left">
-            <p className="text-[10px] text-red-600 leading-relaxed font-medium">{error.msg}</p>
-          </div>
-        )}
-
-        <div className="pt-6 border-t border-slate-100">
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Desenvolvido para facilitar sua comunicação profissional.
-          </p>
         </div>
       </div>
     </div>

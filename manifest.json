@@ -3,23 +3,23 @@
   "name": "Transmito - WhatsApp Broadcast",
   "short_name": "Transmito",
   "description": "Envios em massa profissionais via WhatsApp com IA.",
-  "start_url": "./",
+  "start_url": ".",
   "display": "standalone",
-  "background_color": "#f8fafc",
+  "background_color": "#ffffff",
   "theme_color": "#2563eb",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://api.dicebear.com/7.x/shapes/png?seed=transmito&backgroundColor=2563eb",
+      "src": "https://img.icons8.com/fluency/192/000000/chat.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "https://api.dicebear.com/7.x/shapes/png?seed=transmito&backgroundColor=2563eb",
+      "src": "https://img.icons8.com/fluency/512/000000/chat.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ]
 }
