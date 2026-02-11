@@ -101,7 +101,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
   const releaseWakeLock = () => {
     if (wakeLockRef.current) {
-      wakeLockRef.current.release().then(() => { wakeLockRef.current = null; });
+      wakeLockRef.current.release().then(() => { wakeLockRef.current = null; }).catch(() => {});
     }
   };
 
@@ -131,9 +131,8 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
     const apiUrl = `https://wasenderapi.com/api/send-message`;
     
-    // MOCK: Para o usuário de teste ou se o token não estiver configurado corretamente
     if (!token || token.includes('TOKEN') || user.email === 'teste@transmito.com') {
-      await new Promise(r => setTimeout(r, 700));
+      await new Promise(r => setTimeout(r, 600));
       return true; 
     }
     
@@ -141,7 +140,8 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, text })
+        body: JSON.stringify({ to, text }),
+        signal: AbortSignal.timeout(10000) // Timeout para não travar o loop
       });
       return response.ok;
     } catch (e) { 
@@ -151,6 +151,8 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
   const handleStopTransmission = () => {
     shouldStopRef.current = true;
+    // Feedback imediato na UI alterando o estado da transmissão
+    setTransmission(prev => prev ? { ...prev, isStopped: true, currentName: 'Parando...' } : null);
   };
 
   const handleTransmit = async () => {
@@ -162,74 +164,91 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     await requestWakeLock();
     
     setContacts(prev => prev.map(c => ({ ...c, status: undefined })));
-    setTransmission({ total: contacts.length, sent: 0, errors: 0, currentName: 'Iniciando...', isCompleted: false, failedContacts: [] });
+    setTransmission({ 
+      total: contacts.length, 
+      sent: 0, 
+      errors: 0, 
+      currentName: 'Iniciando...', 
+      isCompleted: false, 
+      failedContacts: [] 
+    });
     
-    // Feedback tátil inicial
     if ("vibrate" in navigator) navigator.vibrate(50);
 
     let localSent = 0;
     let localErrors = 0;
 
-    for (let i = 0; i < contacts.length; i++) {
-      if (shouldStopRef.current) {
-        setTransmission(prev => prev ? { ...prev, isCompleted: true, isStopped: true, currentName: 'Interrompido' } : null);
-        notifyProgress(localSent, contacts.length, false, true);
-        break;
-      }
+    try {
+      for (let i = 0; i < contacts.length; i++) {
+        // Checagem CRÍTICA no início de cada iteração
+        if (shouldStopRef.current) break;
 
-      const contact = contacts[i];
-      const personalizedMsg = message.replace(/{name}/gi, contact.name);
-      
-      const success = await sendDirectMessage(contact.phone, personalizedMsg);
-      
-      if (success) {
-        localSent++;
-        if ("vibrate" in navigator) navigator.vibrate([30]);
-      } else {
-        localErrors++;
-      }
+        const contact = contacts[i];
+        const personalizedMsg = message.replace(/{name}/gi, contact.name);
+        
+        const success = await sendDirectMessage(contact.phone, personalizedMsg);
+        
+        // Checagem imediata após o await do envio
+        if (shouldStopRef.current) break;
 
-      setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, status: success ? 'sent' : 'failed' } : c));
-      
+        if (success) {
+          localSent++;
+          if ("vibrate" in navigator) navigator.vibrate([30]);
+        } else {
+          localErrors++;
+        }
+
+        setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, status: success ? 'sent' : 'failed' } : c));
+        
+        setTransmission(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            sent: localSent,
+            errors: localErrors,
+            failedContacts: success ? prev.failedContacts : [...prev.failedContacts, contact],
+            currentName: contact.name
+          };
+        });
+
+        if (i % 2 === 0 || i === contacts.length - 1) {
+          notifyProgress(localSent + localErrors, contacts.length);
+        }
+
+        // Intervalo entre mensagens
+        if (i < contacts.length - 1 && !shouldStopRef.current) {
+          let waitSeconds = isDelayEnabled ? delay : 1;
+          if (user.email === 'teste@transmito.com') waitSeconds = 2;
+
+          for (let s = waitSeconds; s > 0; s--) {
+            // Checagem DENTRO do loop de contagem regressiva
+            if (shouldStopRef.current) break;
+            setNextSendCountdown(s);
+            await new Promise(r => setTimeout(r, 1000));
+          }
+          setNextSendCountdown(0);
+        }
+        
+        if (shouldStopRef.current) break;
+      }
+    } finally {
+      // Bloco de finalização garantido
+      const wasStopped = shouldStopRef.current;
       setTransmission(prev => {
         if (!prev) return null;
-        return {
-          ...prev,
-          sent: localSent,
-          errors: localErrors,
-          failedContacts: success ? prev.failedContacts : [...prev.failedContacts, contact],
-          currentName: contact.name
-        };
-      });
-
-      // Notificação em tempo real (limitada para não sobrecarregar no mobile)
-      if (i % 2 === 0 || i === contacts.length - 1) {
-        notifyProgress(localSent + localErrors, contacts.length);
-      }
-
-      if (i < contacts.length - 1 && !shouldStopRef.current) {
-        let waitSeconds = isDelayEnabled ? delay : 1;
-        if (user.email === 'teste@transmito.com') waitSeconds = 2; // Rápido no teste
-
-        for (let s = waitSeconds; s > 0; s--) {
-          if (shouldStopRef.current) break;
-          setNextSendCountdown(s);
-          await new Promise(r => setTimeout(r, 1000));
+        if (wasStopped) {
+          notifyProgress(localSent, contacts.length, false, true);
+          return { ...prev, isCompleted: true, isStopped: true, currentName: 'Interrompido' };
+        } else {
+          notifyProgress(localSent, contacts.length, true);
+          return { ...prev, isCompleted: true, currentName: 'Finalizado' };
         }
-        setNextSendCountdown(0);
-      }
+      });
+      
+      setIsSending(false);
+      setNextSendCountdown(0);
+      releaseWakeLock();
     }
-
-    setTransmission(prev => {
-      if (prev && !prev.isStopped) {
-        notifyProgress(localSent, contacts.length, true);
-        return { ...prev, isCompleted: true, currentName: 'Finalizado' };
-      }
-      return prev;
-    });
-    
-    setIsSending(false);
-    releaseWakeLock();
   };
 
   const improveMessageWithAI = async () => {
