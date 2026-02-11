@@ -59,14 +59,17 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
     setIsImproving(true);
     try {
+      // Fix: Always create a fresh instance right before the call as per guidelines
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Reescreva esta mensagem de WhatsApp para ser profissional e cordial. 
-        Mantenha o marcador {nome}. Retorne apenas o texto reescrito.
-        Mensagem: "${message}"`,
-        config: { temperature: 0.7 }
+        contents: `Mensagem original: "${message}"`,
+        config: { 
+          systemInstruction: "Você é um especialista em comunicação empresarial. Sua tarefa é reescrever mensagens de WhatsApp para torná-las profissionais, cordiais e envolventes. Mantenha o marcador {nome} inalterado. Retorne APENAS o texto reescrito, sem introduções ou explicações adicionais.",
+          temperature: 0.7 
+        }
       });
+      // Fix: Accessing .text property directly instead of as a function
       const newText = response.text?.trim();
       if (newText) setMessage(newText);
     } catch (error) {

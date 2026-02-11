@@ -3,9 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { GoogleLogin } from './components/GoogleLogin';
 import { TransmitoDashboard } from './components/TransmitoDashboard';
 import { UserProfile, Contact } from './types';
-// Fixed: Using Firebase v8 compatible imports to resolve "no exported member" errors
-import firebase from 'firebase/app';
-import 'firebase/firestore';
+// Fix: Separating value and type imports to resolve potential resolution issues in mixed environments
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import type { FirebaseApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import type { Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY,
@@ -16,16 +18,16 @@ const firebaseConfig = {
   appId: process.env.FIREBASE_APP_ID
 };
 
-const initFirebase = (): firebase.app.App | null => {
+const initFirebase = (): FirebaseApp | null => {
   try {
-    const apps = firebase.apps;
-    if (apps.length > 0) return firebase.app();
+    const apps = getApps();
+    if (apps.length > 0) return getApp();
     const isConfigured = firebaseConfig.apiKey && 
                          !firebaseConfig.apiKey.includes('SUA_FIREBASE') && 
                          firebaseConfig.projectId && 
                          !firebaseConfig.projectId.includes('SEU_PROJETO');
     if (!isConfigured) return null;
-    return firebase.initializeApp(firebaseConfig);
+    return initializeApp(firebaseConfig);
   } catch (e) {
     console.error("Erro Firebase:", e);
     return null;
@@ -33,7 +35,7 @@ const initFirebase = (): firebase.app.App | null => {
 };
 
 export const app = initFirebase();
-export const db = app ? app.firestore() : null;
+export const db = app ? getFirestore(app) : null;
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -42,7 +44,6 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isVerifyingSubscription, setIsVerifyingSubscription] = useState(false);
 
-  // Verifica a assinatura e limpa o banco se estiver expirada
   const checkFirebaseSubscription = async (email: string): Promise<{isValid: boolean, expiryDate?: string}> => {
     if (!db) {
       const mockSub = localStorage.getItem(`mock_sub_${email}`);
@@ -55,25 +56,23 @@ const App: React.FC = () => {
     }
 
     try {
-      // Fixed: Using v8 collection/doc syntax
-      const subRef = db.collection('subscriptions').doc(email);
-      const subSnap = await subRef.get();
+      const subRef = doc(db as Firestore, 'subscriptions', email);
+      const subSnap = await getDoc(subRef);
       
-      if (subSnap.exists) {
+      if (subSnap.exists()) {
         const data = subSnap.data();
         if (!data) return { isValid: false };
 
-        const expiryDateTs = data.expiryDate instanceof firebase.firestore.Timestamp 
+        const expiryDateTs = data.expiryDate instanceof Timestamp 
           ? data.expiryDate 
-          : firebase.firestore.Timestamp.fromDate(new Date(data.expiryDate || Date.now()));
+          : Timestamp.fromDate(new Date(data.expiryDate || Date.now()));
           
-        const now = firebase.firestore.Timestamp.now();
+        const now = Timestamp.now();
         const hasExpired = expiryDateTs.seconds <= now.seconds;
         
-        // Ação Corretiva: Se o banco diz que é Pro mas o tempo acabou, atualizamos o banco
         if (data.isSubscribed && hasExpired) {
-          console.log("⏰ Assinatura expirada detectada. Atualizando banco de dados...");
-          await subRef.update({ isSubscribed: false });
+          console.log("⏰ Assinatura expirada detectada. Atualizando...");
+          await updateDoc(subRef, { isSubscribed: false });
           return { isValid: false, expiryDate: expiryDateTs.toDate().toISOString() };
         }
         
@@ -88,7 +87,6 @@ const App: React.FC = () => {
     return { isValid: false };
   };
 
-  // Monitoramento em tempo real (Efeito Heartbeat)
   useEffect(() => {
     if (!user || !user.isSubscribed || !user.expiryDate) return;
 
@@ -97,16 +95,13 @@ const App: React.FC = () => {
       const expiry = new Date(user.expiryDate!);
       
       if (now >= expiry) {
-        console.log("🚫 Assinatura expirou durante a sessão!");
         setUser(prev => prev ? { ...prev, isSubscribed: false } : null);
-        // Tenta limpar no banco também de forma silenciosa
         if (db && user.email) {
-          // Fixed: Using v8 collection/doc/update syntax
-          const subRef = db.collection('subscriptions').doc(user.email);
-          subRef.update({ isSubscribed: false }).catch(console.error);
+          const subRef = doc(db as Firestore, 'subscriptions', user.email);
+          updateDoc(subRef, { isSubscribed: false }).catch(console.error);
         }
       }
-    }, 30000); // Checa a cada 30 segundos
+    }, 30000);
 
     return () => clearInterval(interval);
   }, [user]);
@@ -159,11 +154,8 @@ const App: React.FC = () => {
   if (isInitializing || isVerifyingSubscription) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-4">
-        <div className="relative">
-          <div className="w-16 h-16 border-4 border-blue-100 rounded-full"></div>
-          <div className="absolute top-0 left-0 w-16 h-16 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
-        </div>
-        <p className="font-black text-slate-800">Sincronizando...</p>
+        <div className="w-16 h-16 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
+        <p className="font-black text-slate-800">Iniciando Transmito...</p>
       </div>
     );
   }
