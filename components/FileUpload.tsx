@@ -1,16 +1,23 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Contact } from '../types';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
 interface FileUploadProps {
   onDataExtracted: (contacts: Contact[]) => void;
 }
 
+// Fix: Use the globally defined AIStudio type to avoid declaration conflicts.
+// The error indicated that 'aistudio' must be of type 'AIStudio'.
 declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
   interface Window {
     gapi: any;
     google: any;
+    aistudio: AIStudio;
   }
 }
 
@@ -23,8 +30,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{message: string, isQuota: boolean} | null>(null);
 
   useEffect(() => {
     const loadGapi = () => {
@@ -56,7 +62,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           }
         } catch (err) {
           console.error("Erro ao acessar câmera:", err);
-          setError("Não foi possível acessar a câmera. Verifique as permissões de privacidade.");
+          setError({ message: "Não foi possível acessar a câmera. Verifique as permissões.", isQuota: false });
           setIsCameraActive(false);
         }
       }
@@ -72,22 +78,13 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     };
   }, [isCameraActive]);
 
-  const downloadTemplate = () => {
-    const headers = "Nome,Telefone\n";
-    const rows = [
-      "João Silva,5511999999999",
-      "Maria Oliveira,5511888888888"
-    ].join("\n");
-    
-    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", "template_transmito.csv");
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleSelectKey = async () => {
+    try {
+      await window.aistudio.openSelectKey();
+      setError(null);
+    } catch (e) {
+      console.error("Erro ao abrir seletor de chave:", e);
+    }
   };
 
   const processExtractedContacts = (rawContacts: any[]) => {
@@ -117,43 +114,22 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
     if (validContacts.length > 0) {
       onDataExtracted(validContacts);
-      if (duplicateCount > 0) console.log(`${duplicateCount} duplicatas removidas.`);
     } else {
-      setError("Nenhum contato legível encontrado na imagem.");
+      setError({ message: "Nenhum contato identificado. Tente uma foto mais nítida.", isQuota: false });
     }
-  };
-
-  const parseCsv = (csvText: string) => {
-    setError(null);
-    const lines = csvText.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim() !== "");
-    
-    if (lines.length < 2) {
-      setError("O arquivo parece estar vazio.");
-      return;
-    }
-
-    const firstLine = lines[0];
-    const separator = firstLine.includes(';') ? ';' : ',';
-    const rawList = lines.slice(1).map(line => {
-      const parts = line.split(separator);
-      return { name: parts[0], phone: parts[1] };
-    });
-
-    processExtractedContacts(rawList);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleCameraCapture = async () => {
     if (!canvasRef.current || !videoRef.current) return;
     
     setIsAnalyzing(true);
-    const context = canvasRef.current.getContext('2d');
+    setError(null);
     
+    const context = canvasRef.current.getContext('2d');
     const videoWidth = videoRef.current.videoWidth;
     const videoHeight = videoRef.current.videoHeight;
     canvasRef.current.width = videoWidth;
     canvasRef.current.height = videoHeight;
-    
     context?.drawImage(videoRef.current, 0, 0, videoWidth, videoHeight);
     
     const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
@@ -165,9 +141,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     setIsCameraActive(false);
 
     try {
+      // Criar instância na hora para pegar a chave mais atual do seletor
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
+        model: 'gemini-3-flash-preview',
         contents: [
           {
             inlineData: {
@@ -176,20 +153,39 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
             }
           },
           {
-            text: "Extraia todos os contatos visíveis nesta foto. Retorne estritamente um array JSON sem blocos de código markdown ou texto extra. Formato: [{\"name\": \"Nome\", \"phone\": \"55 e DDD e número\"}]. Tente ler nomes e números mesmo se estiverem manuscritos ou em listas impressas. Remova espaços ou traços dos números."
+            text: "Extraia nome e telefone de todos os contatos visíveis nesta lista. Formate o telefone com 55 e DDD."
           }
-        ]
-        // Note: gemini-2.5-flash-image does not support responseMimeType: "application/json"
+        ],
+        config: { 
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING, description: "Nome completo do contato" },
+                phone: { type: Type.STRING, description: "Número do WhatsApp com 55, DDD e dígitos" }
+              },
+              required: ["name", "phone"]
+            }
+          }
+        }
       });
 
-      const textOutput = response.text || "[]";
-      // Clean up markdown formatting if the model returns it
-      const cleanJson = textOutput.replace(/```json\n?|```/g, "").trim();
-      const result = JSON.parse(cleanJson || "[]");
+      const result = JSON.parse(response.text || "[]");
       processExtractedContacts(result);
-    } catch (err) {
-      console.error("Erro IA Vision:", err);
-      setError("Falha ao analisar a imagem. Verifique se a foto está nítida e iluminada.");
+    } catch (err: any) {
+      console.error("Erro na extração:", err);
+      const isQuotaError = err?.message?.includes('429') || err?.message?.includes('RESOURCE_EXHAUSTED');
+      
+      if (isQuotaError) {
+        setError({ 
+          message: "Limite de uso da versão gratuita atingido. Para continuar processando grandes volumes, use sua própria chave do Google AI Studio.", 
+          isQuota: true 
+        });
+      } else {
+        setError({ message: "Falha ao processar imagem. Verifique a iluminação e tente novamente.", isQuota: false });
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -203,7 +199,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       client_id: clientId,
       scope: 'https://www.googleapis.com/auth/drive.readonly',
       callback: (response: any) => {
-        setAccessToken(response.access_token);
         setIsDriveLoading(false);
       },
     });
@@ -238,38 +233,32 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
         const file = e.target.files?.[0];
         if (file) {
           const reader = new FileReader();
-          reader.onload = (e) => parseCsv(e.target?.result as string);
+          reader.onload = (e) => {
+             const csvText = e.target?.result as string;
+             const lines = csvText.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim() !== "");
+             if (lines.length < 2) return setError({ message: "Arquivo vazio.", isQuota: false });
+             const separator = lines[0].includes(';') ? ';' : ',';
+             const rawList = lines.slice(1).map(line => {
+               const parts = line.split(separator);
+               return { name: parts[0], phone: parts[1] };
+             });
+             processExtractedContacts(rawList);
+          };
           reader.readAsText(file);
         }
       }} accept=".csv" className="hidden" />
 
-      {/* Interface da Câmera Fullscreen */}
       {isCameraActive && (
         <div className="fixed inset-0 z-[110] bg-black flex flex-col h-[100dvh] w-screen overflow-hidden">
-          {/* Header */}
           <div className="flex-none p-4 flex justify-between items-center bg-black/40 backdrop-blur-md z-20">
-            <button 
-              onClick={() => setIsCameraActive(false)} 
-              className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
-            >
+            <button onClick={() => setIsCameraActive(false)} className="w-10 h-10 flex items-center justify-center bg-white/10 text-white rounded-full">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
-            <div className="text-white text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 px-3 py-1.5 rounded-full shadow-lg">
-              Centralize a Lista
-            </div>
+            <div className="text-white text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 px-3 py-1.5 rounded-full shadow-lg">Lista na Moldura</div>
             <div className="w-10" />
           </div>
-
-          {/* Video Preview Area */}
           <div className="flex-1 relative bg-slate-900 overflow-hidden">
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted 
-              className="absolute inset-0 w-full h-full object-cover" 
-            />
-            {/* Guide frame */}
+            <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-cover" />
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-6 sm:p-10">
               <div className="w-full h-[70%] border-2 border-white/30 rounded-3xl relative">
                 <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl" />
@@ -279,40 +268,48 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
               </div>
             </div>
           </div>
-
-          {/* Controls Footer */}
           <div className="flex-none h-32 flex items-center justify-center bg-black p-4 z-20">
-            <button 
-              onClick={handleCameraCapture}
-              className="relative active:scale-95 transition-transform"
-            >
+            <button onClick={handleCameraCapture} className="relative active:scale-95 transition-transform">
               <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center border-4 border-white/30 backdrop-blur-sm">
                 <div className="w-14 h-14 bg-white rounded-full shadow-2xl border-2 border-slate-100" />
               </div>
-              <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-black text-white uppercase tracking-widest opacity-60">Capturar</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Overlay de Análise */}
       {isAnalyzing && (
         <div className="fixed inset-0 z-[120] bg-slate-900/95 flex flex-col items-center justify-center text-white p-6 backdrop-blur-md">
           <div className="relative w-24 h-24 mb-8">
-            <div className="absolute inset-0 border-[4px] border-blue-600/20 rounded-full" />
+            <div className="absolute inset-0 border-[4px] border-blue-600/20 rounded-full animate-pulse" />
             <div className="absolute inset-0 border-[4px] border-t-blue-500 rounded-full animate-spin" />
           </div>
-          <h2 className="text-2xl font-black mb-2 tracking-tighter">Processando Lista</h2>
-          <p className="text-slate-400 font-bold text-center max-w-xs leading-relaxed text-xs">Nossa IA está lendo os nomes e números para você. Aguarde um instante.</p>
+          <h2 className="text-2xl font-black mb-2 tracking-tighter">IA Processando Lista</h2>
+          <p className="text-slate-400 font-bold text-center max-w-xs leading-relaxed text-xs">Aguarde a extração de nomes e números...</p>
         </div>
       )}
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
-          <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 flex-shrink-0">
-             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 flex-shrink-0">
+               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+            </div>
+            <p className="text-[11px] font-bold text-red-600 leading-tight flex-1">{error.message}</p>
           </div>
-          <p className="text-[11px] font-bold text-red-600 leading-tight">{error}</p>
+          {error.isQuota && (
+            <div className="pt-2 border-t border-red-100 flex flex-col gap-2">
+              <p className="text-[10px] text-slate-500">
+                Usuários avançados podem vincular uma chave de API própria. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline text-blue-600">Saiba mais sobre faturamento.</a>
+              </p>
+              <button 
+                onClick={handleSelectKey}
+                className="w-full py-2 bg-red-600 text-white text-[10px] font-black uppercase rounded-lg shadow-sm hover:bg-red-700 transition-colors"
+              >
+                Vincular Minha Chave de API
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -324,13 +321,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
         <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="G-Drive" className="w-5 h-5" />
         Importar do Drive
       </button>
-
-      <div className="flex justify-center pt-2">
-        <button onClick={downloadTemplate} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 flex items-center gap-1.5 py-1 transition-colors">
-          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          Planilha Modelo (CSV)
-        </button>
-      </div>
       
       <canvas ref={canvasRef} className="hidden" />
     </div>
