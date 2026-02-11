@@ -23,6 +23,7 @@ interface TransmissionStatus {
   errors: number;
   currentName: string;
   isCompleted: boolean;
+  failedContacts: Contact[];
 }
 
 export const TransmitoDashboard: React.FC<DashboardProps> = ({ 
@@ -117,8 +118,9 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
     if (!token || token.includes('EAAB') || token.includes('TOKEN')) {
       console.warn("⚠️ Token WASender não configurado. Simulando envio...");
-      await new Promise(resolve => setTimeout(resolve, 200));
-      return true;
+      await new Promise(resolve => setTimeout(resolve, 300));
+      // Simula falha aleatória para testar a listagem de erros
+      return Math.random() > 0.05; 
     }
 
     try {
@@ -162,10 +164,11 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       sent: 0,
       errors: 0,
       currentName: 'Preparando envio...',
-      isCompleted: false
+      isCompleted: false,
+      failedContacts: []
     });
 
-    const CHUNK_SIZE = 10;
+    const CHUNK_SIZE = 5; // Reduzido para melhor visualização do progresso
     
     for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
       const chunk = contacts.slice(i, i + CHUNK_SIZE);
@@ -180,13 +183,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             ...prev,
             sent: success ? prev.sent + 1 : prev.sent,
             errors: success ? prev.errors : prev.errors + 1,
+            failedContacts: success ? prev.failedContacts : [...prev.failedContacts, contact],
             currentName: contact.name
           };
         });
       }));
 
       if (i + CHUNK_SIZE < contacts.length) {
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 
@@ -205,53 +209,74 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
       {transmission && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-10 text-center space-y-8 border border-white/20">
+          <div className="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl p-8 sm:p-10 text-center space-y-6 border border-white/20 overflow-hidden flex flex-col max-h-[90vh]">
             <div className="absolute top-0 left-0 w-full h-2 bg-slate-100">
               <div 
                 className="h-full bg-blue-600 transition-all duration-500 ease-out" 
-                style={{ width: `${(transmission.sent / transmission.total) * 100}%` }}
+                style={{ width: `${((transmission.sent + transmission.errors) / transmission.total) * 100}%` }}
               ></div>
             </div>
 
-            <div className="relative w-32 h-32 mx-auto">
-              <svg className="w-full h-full rotate-[-90deg]">
-                <circle cx="64" cy="64" r="58" fill="transparent" stroke="#f1f5f9" strokeWidth="10" />
-                <circle 
-                  cx="64" cy="64" r="58" fill="transparent" stroke="#2563eb" strokeWidth="10" 
-                  strokeDasharray={`${2 * Math.PI * 58}`}
-                  strokeDashoffset={`${2 * Math.PI * 58 * (1 - transmission.sent / transmission.total)}`}
-                  strokeLinecap="round"
-                  className="transition-all duration-500 ease-out"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-3xl font-black text-slate-900 leading-none">{Math.round((transmission.sent / transmission.total) * 100)}%</span>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter mt-1">Concluído</span>
+            {!transmission.isCompleted && (
+              <div className="relative w-24 h-24 mx-auto">
+                <svg className="w-full h-full rotate-[-90deg]">
+                  <circle cx="48" cy="48" r="42" fill="transparent" stroke="#f1f5f9" strokeWidth="8" />
+                  <circle 
+                    cx="48" cy="48" r="42" fill="transparent" stroke="#2563eb" strokeWidth="8" 
+                    strokeDasharray={`${2 * Math.PI * 42}`}
+                    strokeDashoffset={`${2 * Math.PI * 42 * (1 - (transmission.sent + transmission.errors) / transmission.total)}`}
+                    strokeLinecap="round"
+                    className="transition-all duration-500 ease-out"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-xl font-black text-slate-900 leading-none">{Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100)}%</span>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               <h3 className="text-2xl font-black text-slate-900">
                 {transmission.isCompleted ? "Transmissão Finalizada" : "Enviando Mensagens"}
               </h3>
-              <div className="flex justify-center gap-6">
-                <div className="text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sucesso</p>
-                  <p className="text-xl font-black text-green-600">{transmission.sent}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Falhas</p>
-                  <p className="text-xl font-black text-red-500">{transmission.errors}</p>
-                </div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{transmission.currentName}</p>
+            </div>
+
+            <div className="flex justify-center gap-8 py-4 bg-slate-50 rounded-3xl">
+              <div className="text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</p>
+                <p className="text-2xl font-black text-slate-900">{transmission.total}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Enviado</p>
+                <p className="text-2xl font-black text-green-600">{transmission.sent}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Falha</p>
+                <p className="text-2xl font-black text-red-500">{transmission.errors}</p>
               </div>
             </div>
+
+            {transmission.isCompleted && transmission.failedContacts.length > 0 && (
+              <div className="flex flex-col text-left space-y-3 flex-1 overflow-hidden">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Lista de Falhas:</h4>
+                <div className="bg-red-50/50 border border-red-100 rounded-2xl overflow-y-auto p-4 space-y-2">
+                  {transmission.failedContacts.map((contact, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-xs font-bold bg-white p-3 rounded-xl border border-red-100 shadow-sm">
+                      <span className="text-slate-700">{contact.name}</span>
+                      <span className="text-red-500 font-mono">{contact.phone}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {transmission.isCompleted && (
               <button 
                 onClick={() => setTransmission(null)} 
-                className="w-full py-5 bg-slate-900 hover:bg-black text-white font-black rounded-[1.5rem] shadow-xl transition-all"
+                className="w-full py-5 bg-slate-900 hover:bg-black text-white font-black rounded-[1.5rem] shadow-xl transition-all mt-4"
               >
-                ENTENDIDO
+                FECHAR RELATÓRIO
               </button>
             )}
           </div>
@@ -337,6 +362,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 h-full overflow-hidden flex flex-col min-h-[500px]">
               <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-white sticky top-0 z-20">
                 <h3 className="text-lg font-black text-slate-800 tracking-tight">Lista de Transmissão ({contacts.length})</h3>
+                {contacts.length > 0 && (
+                  <button 
+                    onClick={() => setContacts([])}
+                    className="text-[9px] font-black uppercase tracking-widest text-red-400 hover:text-red-600 transition-colors"
+                  >
+                    Limpar Lista
+                  </button>
+                )}
               </div>
               <div className="flex-1 overflow-auto bg-slate-50/30">
                 {contacts.length > 0 ? <ContactTable contacts={contacts} /> : (
