@@ -17,6 +17,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadGapi = () => {
@@ -31,28 +32,72 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     loadGapi();
   }, []);
 
-  const parseCsv = (csvText: string) => {
-    const lines = csvText.split('\n');
-    const contacts: Contact[] = [];
+  const downloadTemplate = () => {
+    const headers = "Nome,Telefone\n";
+    const rows = [
+      "João Silva,5511999999999",
+      "Maria Oliveira,5511888888888"
+    ].join("\n");
     
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-      if (index === 0 && (line.toLowerCase().includes('nome') || line.toLowerCase().includes('name') || line.toLowerCase().includes('phone'))) return;
+    const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", "template_transmito.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const parseCsv = (csvText: string) => {
+    setError(null);
+    // Remove BOM e divide por linhas, removendo vazias
+    const lines = csvText.replace(/^\uFEFF/, '').split(/\r?\n/).filter(line => line.trim() !== "");
+    
+    if (lines.length < 2) {
+      setError("O arquivo parece estar vazio ou sem contatos.");
+      return;
+    }
+
+    const contacts: Contact[] = [];
+    let hasInvalidRows = false;
+
+    // Detectar separador (vírgula ou ponto e vírgula)
+    const firstLine = lines[0];
+    const separator = firstLine.includes(';') ? ';' : ',';
+
+    // Processar a partir da segunda linha (assumindo cabeçalho)
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
+      const parts = line.split(separator);
       
-      const parts = line.split(/[;,]/);
       if (parts.length >= 2) {
         const name = parts[0].trim().replace(/"/g, '');
         const phone = parts[1].trim().replace(/\D/g, '');
         
-        if (name && phone) {
+        if (name && phone && phone.length >= 8) {
           contacts.push({
-            id: `file-${index}-${Date.now()}`,
+            id: `file-${i}-${Date.now()}`,
             name,
             phone
           });
+        } else {
+          hasInvalidRows = true;
         }
+      } else {
+        hasInvalidRows = true;
       }
-    });
+    }
+
+    if (contacts.length === 0) {
+      setError("Nenhum contato válido encontrado. Use o modelo: Nome, Telefone.");
+      return;
+    }
+
+    if (hasInvalidRows) {
+      console.warn("Algumas linhas foram ignoradas por estarem mal formatadas.");
+    }
 
     onDataExtracted(contacts);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -61,6 +106,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const handleCsvUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      setError("Por favor, selecione apenas arquivos .CSV");
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -71,12 +121,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   };
 
   const createPicker = (token: string) => {
-    // Agora utilizamos a chave específica para o Picker
     const pickerApiKey = process.env.GOOGLE_PICKER_API_KEY; 
     const clientId = process.env.GOOGLE_CLIENT_ID;
 
     if (!pickerApiKey || !clientId || pickerApiKey.includes('SUA_CHAVE')) {
-      alert("Erro: GOOGLE_PICKER_API_KEY não configurada no arquivo env/.env.local");
+      alert("Erro: GOOGLE_PICKER_API_KEY não configurada.");
       setIsDriveLoading(false);
       return;
     }
@@ -114,21 +163,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       parseCsv(text);
     } catch (error) {
       console.error("Erro ao baixar arquivo do Drive:", error);
-      alert("Erro ao acessar o arquivo selecionado no Drive.");
+      setError("Erro ao acessar o arquivo no Drive.");
     }
   };
 
   const openGoogleDrivePicker = () => {
     const clientId = process.env.GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      alert("GOOGLE_CLIENT_ID não configurado no arquivo env/.env.local.");
-      return;
-    }
+    if (!clientId) return;
 
     setIsDriveLoading(true);
+    setError(null);
     
     if (!window.google?.accounts?.oauth2) {
-      alert("Biblioteca de autenticação do Google não carregada.");
       setIsDriveLoading(false);
       return;
     }
@@ -139,7 +185,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       callback: (response: any) => {
         if (response.error !== undefined) {
           setIsDriveLoading(false);
-          console.error(response);
           return;
         }
         setAccessToken(response.access_token);
@@ -155,17 +200,23 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div 
         onClick={() => fileInputRef.current?.click()}
-        className="group border-2 border-dashed border-slate-200 rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all active:scale-[0.98]"
+        className={`group border-2 border-dashed rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center cursor-pointer transition-all active:scale-[0.98] ${
+          error ? 'border-red-200 bg-red-50/30' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/50'
+        }`}
       >
-        <div className="w-10 h-10 bg-slate-50 text-slate-400 rounded-xl flex items-center justify-center mb-2 group-hover:text-blue-500 group-hover:bg-blue-100 transition-colors">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-2 transition-colors ${
+          error ? 'bg-red-100 text-red-500' : 'bg-slate-50 text-slate-400 group-hover:text-blue-500 group-hover:bg-blue-100'
+        }`}>
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
           </svg>
         </div>
-        <p className="text-xs sm:text-sm font-bold text-slate-600 group-hover:text-blue-600">Subir Arquivo CSV</p>
+        <p className={`text-xs sm:text-sm font-bold ${error ? 'text-red-600' : 'text-slate-600 group-hover:text-blue-600'}`}>
+          {error || "Subir Arquivo CSV"}
+        </p>
         <p className="text-[10px] text-slate-400 mt-0.5">Clique para selecionar localmente</p>
         <input 
           type="file" 
@@ -174,6 +225,16 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           accept=".csv" 
           className="hidden" 
         />
+      </div>
+
+      <div className="flex justify-center">
+        <button 
+          onClick={downloadTemplate}
+          className="text-[10px] font-black uppercase tracking-widest text-blue-600 hover:text-blue-800 flex items-center gap-1.5 py-1"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          Baixar Planilha Exemplo
+        </button>
       </div>
 
       <div className="flex items-center gap-3">
