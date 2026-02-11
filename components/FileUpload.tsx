@@ -7,17 +7,15 @@ interface FileUploadProps {
   onDataExtracted: (contacts: Contact[]) => void;
 }
 
-// Fix: Use the globally defined AIStudio type to avoid declaration conflicts.
-// The error indicated that 'aistudio' must be of type 'AIStudio'.
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
   interface Window {
-    gapi: any;
-    google: any;
-    aistudio: AIStudio;
+    gapi?: any;
+    google?: any;
+    aistudio?: AIStudio;
   }
 }
 
@@ -80,8 +78,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
   const handleSelectKey = async () => {
     try {
-      await window.aistudio.openSelectKey();
-      setError(null);
+      if (window.aistudio) {
+        await window.aistudio.openSelectKey();
+        setError(null);
+      }
     } catch (e) {
       console.error("Erro ao abrir seletor de chave:", e);
     }
@@ -90,7 +90,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const processExtractedContacts = (rawContacts: any[]) => {
     const seenPhones = new Set<string>();
     const validContacts: Contact[] = [];
-    let duplicateCount = 0;
 
     if (!Array.isArray(rawContacts)) return;
 
@@ -106,8 +105,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
             name,
             phone
           });
-        } else {
-          duplicateCount++;
         }
       }
     });
@@ -117,6 +114,19 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     } else {
       setError({ message: "Nenhum contato identificado. Tente uma foto mais nítida.", isQuota: false });
     }
+  };
+
+  const downloadCsvTemplate = () => {
+    const csvContent = "nome,telefone\nJoão Silva,5511999998888\nMaria Santos,5511977776666";
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "template_transmito.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleCameraCapture = async () => {
@@ -141,21 +151,22 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     setIsCameraActive(false);
 
     try {
-      // Criar instância na hora para pegar a chave mais atual do seletor
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: [
-          {
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64Image
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64Image
+              }
+            },
+            {
+              text: "Extraia nome e telefone de todos os contatos visíveis nesta lista. Formate o telefone com 55 e DDD."
             }
-          },
-          {
-            text: "Extraia nome e telefone de todos os contatos visíveis nesta lista. Formate o telefone com 55 e DDD."
-          }
-        ],
+          ]
+        },
         config: { 
           responseMimeType: "application/json",
           responseSchema: {
@@ -180,11 +191,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       
       if (isQuotaError) {
         setError({ 
-          message: "Limite de uso da versão gratuita atingido. Para continuar processando grandes volumes, use sua própria chave do Google AI Studio.", 
+          message: "Limite de uso atingido. Use sua própria chave do Google AI Studio para continuar.", 
           isQuota: true 
         });
       } else {
-        setError({ message: "Falha ao processar imagem. Verifique a iluminação e tente novamente.", isQuota: false });
+        setError({ message: "Falha ao processar imagem. Verifique a iluminação.", isQuota: false });
       }
     } finally {
       setIsAnalyzing(false);
@@ -215,7 +226,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center mb-2 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors text-slate-400">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
           </div>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-700">Escaneia Lista</span>
+          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-blue-700">Escanear lista</span>
         </button>
 
         <button 
@@ -289,6 +300,25 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
         </div>
       )}
 
+      <div className="space-y-2">
+        <button
+          onClick={openGoogleDrivePicker}
+          disabled={isDriveLoading}
+          className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-slate-700 font-bold text-sm hover:bg-slate-50 transition-all shadow-sm active:scale-95"
+        >
+          <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="G-Drive" className="w-5 h-5" />
+          Importar do Drive
+        </button>
+
+        <button
+          onClick={downloadCsvTemplate}
+          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 font-bold text-[10px] uppercase tracking-widest hover:bg-slate-100 transition-all active:scale-95"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+          Baixar Template CSV
+        </button>
+      </div>
+
       {error && (
         <div className="p-4 bg-red-50 border border-red-100 rounded-2xl space-y-3">
           <div className="flex items-center gap-3">
@@ -299,9 +329,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           </div>
           {error.isQuota && (
             <div className="pt-2 border-t border-red-100 flex flex-col gap-2">
-              <p className="text-[10px] text-slate-500">
-                Usuários avançados podem vincular uma chave de API própria. <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" className="underline text-blue-600">Saiba mais sobre faturamento.</a>
-              </p>
               <button 
                 onClick={handleSelectKey}
                 className="w-full py-2 bg-red-600 text-white text-[10px] font-black uppercase rounded-lg shadow-sm hover:bg-red-700 transition-colors"
@@ -312,15 +339,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           )}
         </div>
       )}
-
-      <button
-        onClick={openGoogleDrivePicker}
-        disabled={isDriveLoading}
-        className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-white border border-slate-200 rounded-2xl text-slate-700 font-bold text-sm hover:bg-slate-50 transition-all shadow-sm active:scale-95"
-      >
-        <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" alt="G-Drive" className="w-5 h-5" />
-        Importar do Drive
-      </button>
       
       <canvas ref={canvasRef} className="hidden" />
     </div>

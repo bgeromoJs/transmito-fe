@@ -3,6 +3,7 @@ export interface Contact {
   id: string;
   name: string;
   phone: string;
+  status?: 'sent' | 'failed';
 }
 
 export interface UserProfile {

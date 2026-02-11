@@ -17,6 +17,7 @@ export const ContactTable: React.FC<ContactTableProps> = ({ contacts }) => {
               <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">#</th>
               <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nome</th>
               <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Telefone</th>
+              <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100/50">
@@ -36,6 +37,23 @@ export const ContactTable: React.FC<ContactTableProps> = ({ contacts }) => {
                     {contact.phone}
                   </span>
                 </td>
+                <td className="px-6 py-4">
+                  {contact.status === 'sent' && (
+                    <span className="text-[9px] font-black uppercase text-green-600 tracking-wider">
+                      Enviado
+                    </span>
+                  )}
+                  {contact.status === 'failed' && (
+                    <span className="text-[9px] font-black uppercase text-red-500 tracking-wider">
+                      Não enviado
+                    </span>
+                  )}
+                  {!contact.status && (
+                    <span className="text-[9px] font-black uppercase text-slate-300 tracking-wider">
+                      Pendente
+                    </span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -52,7 +70,19 @@ export const ContactTable: React.FC<ContactTableProps> = ({ contacts }) => {
               </div>
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-slate-800 leading-tight">{contact.name}</span>
-                <span className="text-[11px] font-mono font-semibold text-slate-400">{contact.phone}</span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-[11px] font-mono font-semibold text-slate-400">{contact.phone}</span>
+                  {contact.status === 'sent' && (
+                    <span className="text-[8px] font-black uppercase text-green-600 tracking-wider">
+                      • Enviado
+                    </span>
+                  )}
+                  {contact.status === 'failed' && (
+                    <span className="text-[8px] font-black uppercase text-red-500 tracking-wider">
+                      • Não enviado
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="text-[10px] font-black text-slate-200 italic">
