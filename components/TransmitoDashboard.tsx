@@ -64,7 +64,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         model: 'gemini-3-flash-preview',
         contents: `Mensagem original: "${message}"`,
         config: { 
-          systemInstruction: "Você é um especialista em comunicação empresarial. Sua tarefa é reescrever mensagens de WhatsApp para torná-las profissionais, cordiais e envolventes. Mantenha o marcador {nome} inalterado. Retorne APENAS o texto reescrito.",
+          systemInstruction: "Você é um especialista em comunicação empresarial. Sua tarefa é reescrever mensagens de WhatsApp para torná-las profissionais, cordiais e envolventes. Mantenha o marcador {name} inalterado. Retorne APENAS o texto reescrito, sem aspas ou comentários.",
           temperature: 0.7 
         }
       });
@@ -72,6 +72,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       if (newText) setMessage(newText);
     } catch (error) {
       console.error("Erro na IA:", error);
+      alert("Erro ao conectar com a IA. Verifique se sua API_KEY no arquivo .env está correta.");
     } finally {
       setIsImproving(false);
     }
@@ -138,14 +139,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       isCompleted: false
     });
 
-    // Aumentamos o CHUNK_SIZE para 10 para ser ainda mais rápido
     const CHUNK_SIZE = 10;
     
     for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
       const chunk = contacts.slice(i, i + CHUNK_SIZE);
       
       await Promise.all(chunk.map(async (contact) => {
-        const personalizedMsg = message.replace(/{nome}/gi, contact.name);
+        // Atualizado para substituir {name} em vez de {nome}
+        const personalizedMsg = message.replace(/{name}/gi, contact.name);
         const success = await sendDirectMessage(contact.phone, personalizedMsg);
 
         setTransmission(prev => {
@@ -159,7 +160,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         });
       }));
 
-      // Latência mínima entre lotes para não sobrecarregar o navegador
       if (i + CHUNK_SIZE < contacts.length) {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
@@ -296,10 +296,10 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="Olá {nome}, tudo bem?"
+                placeholder="Olá {name}, tudo bem?"
                 className="w-full h-56 p-5 bg-slate-50 border border-slate-200 rounded-2xl focus:border-blue-500 outline-none transition-all resize-none text-slate-700 font-medium leading-relaxed"
               ></textarea>
-              <p className="text-[10px] font-black text-slate-400 mt-3 uppercase tracking-widest">Use {`{nome}`} para personalizar</p>
+              <p className="text-[10px] font-black text-slate-400 mt-3 uppercase tracking-widest">Use {`{name}`} para personalizar</p>
             </section>
             
             <section className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">

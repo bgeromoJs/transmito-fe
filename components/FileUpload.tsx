@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { Contact } from '../types';
 
@@ -36,7 +37,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     
     lines.forEach((line, index) => {
       if (!line.trim()) return;
-      if (index === 0 && (line.toLowerCase().includes('nome') || line.toLowerCase().includes('phone'))) return;
+      if (index === 0 && (line.toLowerCase().includes('nome') || line.toLowerCase().includes('name') || line.toLowerCase().includes('phone'))) return;
       
       const parts = line.split(/[;,]/);
       if (parts.length >= 2) {
@@ -70,11 +71,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   };
 
   const createPicker = (token: string) => {
-    const apiKey = process.env.API_KEY; 
+    // Agora utilizamos a chave específica para o Picker
+    const pickerApiKey = process.env.GOOGLE_PICKER_API_KEY; 
     const clientId = process.env.GOOGLE_CLIENT_ID;
 
-    if (!apiKey || !clientId) {
-      alert("Erro: API_KEY ou GOOGLE_CLIENT_ID não configurados em env/.env.local");
+    if (!pickerApiKey || !clientId || pickerApiKey.includes('SUA_CHAVE')) {
+      alert("Erro: GOOGLE_PICKER_API_KEY não configurada no arquivo env/.env.local");
       setIsDriveLoading(false);
       return;
     }
@@ -84,7 +86,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
     const picker = new window.google.picker.PickerBuilder()
       .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
-      .setDeveloperKey(apiKey)
+      .setDeveloperKey(pickerApiKey)
       .setAppId(clientId.split('-')[0])
       .setOAuthToken(token)
       .addView(view)

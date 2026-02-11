@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
     envDir: 'env',
     define: {
       'process.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID),
+      'process.env.GOOGLE_PICKER_API_KEY': JSON.stringify(env.GOOGLE_PICKER_API_KEY),
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
       'process.env.STRIPE_PUBLIC_KEY': JSON.stringify(env.STRIPE_PUBLIC_KEY),
       'process.env.FIREBASE_API_KEY': JSON.stringify(env.FIREBASE_API_KEY),
@@ -19,9 +20,8 @@ export default defineConfig(({ mode }) => {
       'process.env.FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.FIREBASE_MESSAGING_SENDER_ID),
       'process.env.FIREBASE_APP_ID': JSON.stringify(env.FIREBASE_APP_ID),
       'process.env.WHATSAPP_ACCESS_TOKEN': JSON.stringify(env.WHATSAPP_ACCESS_TOKEN),
-    },
-    server: {
-      historyApiFallback: true,
     }
+    // Fixed: historyApiFallback is not a valid property of Vite ServerOptions. 
+    // Vite handles SPA routing (redirecting 404s to index.html) automatically.
   };
 });
