@@ -3,11 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { GoogleLogin } from './components/GoogleLogin';
 import { TransmitoDashboard } from './components/TransmitoDashboard';
 import { UserProfile, Contact } from './types';
-// Fix: Separating value and type imports to resolve potential resolution issues in mixed environments
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import type { FirebaseApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, updateDoc, Timestamp } from 'firebase/firestore';
-import type { Firestore } from 'firebase/firestore';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, updateDoc, Timestamp, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY,
@@ -24,8 +21,7 @@ const initFirebase = (): FirebaseApp | null => {
     if (apps.length > 0) return getApp();
     const isConfigured = firebaseConfig.apiKey && 
                          !firebaseConfig.apiKey.includes('SUA_FIREBASE') && 
-                         firebaseConfig.projectId && 
-                         !firebaseConfig.projectId.includes('SEU_PROJETO');
+                         firebaseConfig.projectId;
     if (!isConfigured) return null;
     return initializeApp(firebaseConfig);
   } catch (e) {
@@ -44,80 +40,30 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isVerifyingSubscription, setIsVerifyingSubscription] = useState(false);
 
-  const checkFirebaseSubscription = async (email: string): Promise<{isValid: boolean, expiryDate?: string}> => {
+  const checkSubscription = async (email: string) => {
     if (!db) {
-      const mockSub = localStorage.getItem(`mock_sub_${email}`);
-      if (mockSub) {
-        const data = JSON.parse(mockSub);
-        const expired = new Date(data.expiryDate) < new Date();
-        return { isValid: data.isSubscribed && !expired, expiryDate: data.expiryDate };
-      }
-      return { isValid: false };
+      const mock = localStorage.getItem(`mock_sub_${email}`);
+      return mock ? JSON.parse(mock) : { isValid: false };
     }
-
     try {
-      const subRef = doc(db as Firestore, 'subscriptions', email);
-      const subSnap = await getDoc(subRef);
-      
+      const subSnap = await getDoc(doc(db as Firestore, 'subscriptions', email));
       if (subSnap.exists()) {
         const data = subSnap.data();
-        if (!data) return { isValid: false };
-
-        const expiryDateTs = data.expiryDate instanceof Timestamp 
-          ? data.expiryDate 
-          : Timestamp.fromDate(new Date(data.expiryDate || Date.now()));
-          
-        const now = Timestamp.now();
-        const hasExpired = expiryDateTs.seconds <= now.seconds;
-        
-        if (data.isSubscribed && hasExpired) {
-          console.log("⏰ Assinatura expirada detectada. Atualizando...");
-          await updateDoc(subRef, { isSubscribed: false });
-          return { isValid: false, expiryDate: expiryDateTs.toDate().toISOString() };
-        }
-        
-        return { 
-          isValid: data.isSubscribed === true && !hasExpired, 
-          expiryDate: expiryDateTs.toDate().toISOString() 
-        };
+        const expiry = data.expiryDate instanceof Timestamp ? data.expiryDate.toDate() : new Date(data.expiryDate);
+        const isValid = data.isSubscribed && expiry > new Date();
+        return { isValid, expiryDate: expiry.toISOString() };
       }
-    } catch (error) {
-      console.error("Erro ao verificar assinatura:", error);
-    }
+    } catch (e) { console.error(e); }
     return { isValid: false };
   };
 
   useEffect(() => {
-    if (!user || !user.isSubscribed || !user.expiryDate) return;
-
-    const interval = setInterval(() => {
-      const now = new Date();
-      const expiry = new Date(user.expiryDate!);
-      
-      if (now >= expiry) {
-        setUser(prev => prev ? { ...prev, isSubscribed: false } : null);
-        if (db && user.email) {
-          const subRef = doc(db as Firestore, 'subscriptions', user.email);
-          updateDoc(subRef, { isSubscribed: false }).catch(console.error);
-        }
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [user]);
-
-  useEffect(() => {
     const init = async () => {
-      const savedUser = localStorage.getItem('transmito_user');
-      if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-        const subData = await checkFirebaseSubscription(parsedUser.email);
-        const updatedUser = { 
-          ...parsedUser, 
-          isSubscribed: subData.isValid,
-          expiryDate: subData.expiryDate 
-        };
-        setUser(updatedUser);
+      const saved = localStorage.getItem('transmito_user');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const sub = await checkSubscription(parsed.email);
+        setUser({ ...parsed, isSubscribed: sub.isValid, expiryDate: sub.expiryDate });
       }
       setIsInitializing(false);
     };
@@ -126,42 +72,23 @@ const App: React.FC = () => {
 
   const handleLogin = async (profile: UserProfile) => {
     setIsVerifyingSubscription(true);
-    const subData = await checkFirebaseSubscription(profile.email);
-    const updatedProfile = { 
-      ...profile, 
-      isSubscribed: subData.isValid,
-      expiryDate: subData.expiryDate 
-    };
-
-    setUser(updatedProfile);
-    localStorage.setItem('transmito_user', JSON.stringify(updatedProfile));
+    const sub = await checkSubscription(profile.email);
+    const userProfile = { ...profile, isSubscribed: sub.isValid, expiryDate: sub.expiryDate };
+    setUser(userProfile);
+    localStorage.setItem('transmito_user', JSON.stringify(userProfile));
     setIsVerifyingSubscription(false);
-  };
-
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('transmito_user');
-  };
-
-  const updateSubscription = (status: boolean, expiry?: string) => {
-    if (user) {
-      const updatedUser = { ...user, isSubscribed: status, expiryDate: expiry || user.expiryDate };
-      setUser(updatedUser);
-      localStorage.setItem('transmito_user', JSON.stringify(updatedUser));
-    }
   };
 
   if (isInitializing || isVerifyingSubscription) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-4">
-        <div className="w-16 h-16 border-4 border-blue-600 rounded-full border-t-transparent animate-spin"></div>
-        <p className="font-black text-slate-800">Iniciando Transmito...</p>
+      <div className="flex items-center justify-center min-h-screen bg-slate-50">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-slate-50">
       {!user ? (
         <GoogleLogin onLogin={handleLogin} />
       ) : (
@@ -171,9 +98,9 @@ const App: React.FC = () => {
           setContacts={setContacts}
           message={message}
           setMessage={setMessage}
-          onLogout={handleLogout}
-          onSubscribe={(expiry) => updateSubscription(true, expiry)}
-          onCancelSubscription={() => updateSubscription(false)}
+          onLogout={() => { setUser(null); localStorage.removeItem('transmito_user'); }}
+          onSubscribe={(expiry) => setUser({ ...user, isSubscribed: true, expiryDate: expiry })}
+          onCancelSubscription={() => setUser({ ...user, isSubscribed: false })}
         />
       )}
     </div>
