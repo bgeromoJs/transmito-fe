@@ -39,7 +39,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     loadGapi();
   }, []);
 
-  // Efeito para ligar a câmera quando o overlay for ativado
   useEffect(() => {
     const startCameraStream = async () => {
       if (isCameraActive && videoRef.current) {
@@ -47,8 +46,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           const stream = await navigator.mediaDevices.getUserMedia({ 
             video: { 
               facingMode: 'environment',
-              width: { ideal: 1280 },
-              height: { ideal: 720 }
+              width: { ideal: 1920 },
+              height: { ideal: 1080 }
             } 
           });
           streamRef.current = stream;
@@ -57,7 +56,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
           }
         } catch (err) {
           console.error("Erro ao acessar câmera:", err);
-          setError("Não foi possível acessar a câmera. Verifique as permissões.");
+          setError("Não foi possível acessar a câmera. Verifique as permissões de privacidade.");
           setIsCameraActive(false);
         }
       }
@@ -120,7 +119,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       onDataExtracted(validContacts);
       if (duplicateCount > 0) console.log(`${duplicateCount} duplicatas removidas.`);
     } else {
-      setError("Nenhum contato legível encontrado.");
+      setError("Nenhum contato legível encontrado na imagem.");
     }
   };
 
@@ -149,13 +148,16 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     
     setIsAnalyzing(true);
     const context = canvasRef.current.getContext('2d');
-    canvasRef.current.width = videoRef.current.videoWidth;
-    canvasRef.current.height = videoRef.current.videoHeight;
-    context?.drawImage(videoRef.current, 0, 0);
+    
+    const videoWidth = videoRef.current.videoWidth;
+    const videoHeight = videoRef.current.videoHeight;
+    canvasRef.current.width = videoWidth;
+    canvasRef.current.height = videoHeight;
+    
+    context?.drawImage(videoRef.current, 0, 0, videoWidth, videoHeight);
     
     const base64Image = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
     
-    // Parar câmera imediatamente
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -174,18 +176,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
             }
           },
           {
-            text: "Extraia todos os contatos visíveis. Retorne um JSON strictly: [{\"name\": \"Nome\", \"phone\": \"Número com 55 e DDD\"}]. Se for uma lista impressa ou escrita a mão, tente ser preciso."
+            text: "Extraia todos os contatos visíveis nesta foto. Retorne estritamente um array JSON sem blocos de código markdown ou texto extra. Formato: [{\"name\": \"Nome\", \"phone\": \"55 e DDD e número\"}]. Tente ler nomes e números mesmo se estiverem manuscritos ou em listas impressas. Remova espaços ou traços dos números."
           }
-        ],
-        config: { responseMimeType: "application/json" }
+        ]
+        // Note: gemini-2.5-flash-image does not support responseMimeType: "application/json"
       });
 
-      const textOutput = response.text;
-      const result = JSON.parse(textOutput || "[]");
+      const textOutput = response.text || "[]";
+      // Clean up markdown formatting if the model returns it
+      const cleanJson = textOutput.replace(/```json\n?|```/g, "").trim();
+      const result = JSON.parse(cleanJson || "[]");
       processExtractedContacts(result);
     } catch (err) {
       console.error("Erro IA Vision:", err);
-      setError("Falha ao analisar a imagem. Tente capturar novamente com mais luz.");
+      setError("Falha ao analisar a imagem. Verifique se a foto está nítida e iluminada.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -200,7 +204,6 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       scope: 'https://www.googleapis.com/auth/drive.readonly',
       callback: (response: any) => {
         setAccessToken(response.access_token);
-        // Picker logic here (assumed simplified for brevity)
         setIsDriveLoading(false);
       },
     });
@@ -242,20 +245,51 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
       {/* Interface da Câmera Fullscreen */}
       {isCameraActive && (
-        <div className="fixed inset-0 z-[110] bg-black flex flex-col">
-          <div className="absolute top-0 left-0 w-full p-6 z-10 flex justify-between">
-            <button onClick={() => setIsCameraActive(false)} className="bg-black/50 text-white p-2 rounded-full backdrop-blur-md">
+        <div className="fixed inset-0 z-[110] bg-black flex flex-col h-[100dvh] w-screen overflow-hidden">
+          {/* Header */}
+          <div className="flex-none p-4 flex justify-between items-center bg-black/40 backdrop-blur-md z-20">
+            <button 
+              onClick={() => setIsCameraActive(false)} 
+              className="w-10 h-10 flex items-center justify-center bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors"
+            >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
-            <div className="text-white text-xs font-bold uppercase tracking-widest self-center bg-black/50 px-4 py-2 rounded-full backdrop-blur-md">Centralize a Lista</div>
+            <div className="text-white text-[10px] font-black uppercase tracking-[0.2em] bg-blue-600 px-3 py-1.5 rounded-full shadow-lg">
+              Centralize a Lista
+            </div>
+            <div className="w-10" />
           </div>
-          <video ref={videoRef} autoPlay playsInline className="flex-1 object-cover" />
-          <div className="p-12 flex items-center justify-center bg-gradient-to-t from-black/80 to-transparent">
+
+          {/* Video Preview Area */}
+          <div className="flex-1 relative bg-slate-900 overflow-hidden">
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              playsInline 
+              muted 
+              className="absolute inset-0 w-full h-full object-cover" 
+            />
+            {/* Guide frame */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center p-6 sm:p-10">
+              <div className="w-full h-[70%] border-2 border-white/30 rounded-3xl relative">
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-xl" />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-xl" />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-xl" />
+              </div>
+            </div>
+          </div>
+
+          {/* Controls Footer */}
+          <div className="flex-none h-32 flex items-center justify-center bg-black p-4 z-20">
             <button 
               onClick={handleCameraCapture}
-              className="w-24 h-24 bg-white rounded-full border-[12px] border-white/20 active:scale-90 transition-transform flex items-center justify-center shadow-2xl"
+              className="relative active:scale-95 transition-transform"
             >
-              <div className="w-16 h-16 bg-white border-2 border-slate-100 rounded-full" />
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center border-4 border-white/30 backdrop-blur-sm">
+                <div className="w-14 h-14 bg-white rounded-full shadow-2xl border-2 border-slate-100" />
+              </div>
+              <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] font-black text-white uppercase tracking-widest opacity-60">Capturar</span>
             </button>
           </div>
         </div>
@@ -263,18 +297,18 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
 
       {/* Overlay de Análise */}
       {isAnalyzing && (
-        <div className="fixed inset-0 z-[120] bg-slate-900/95 flex flex-col items-center justify-center text-white p-6 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[120] bg-slate-900/95 flex flex-col items-center justify-center text-white p-6 backdrop-blur-md">
           <div className="relative w-24 h-24 mb-8">
-            <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full" />
-            <div className="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin" />
+            <div className="absolute inset-0 border-[4px] border-blue-600/20 rounded-full" />
+            <div className="absolute inset-0 border-[4px] border-t-blue-500 rounded-full animate-spin" />
           </div>
-          <h2 className="text-2xl font-black mb-2 tracking-tight">Escaneando Documento</h2>
-          <p className="text-slate-400 font-medium text-center max-w-xs">Nossa IA está identificando nomes e números de WhatsApp para você...</p>
+          <h2 className="text-2xl font-black mb-2 tracking-tighter">Processando Lista</h2>
+          <p className="text-slate-400 font-bold text-center max-w-xs leading-relaxed text-xs">Nossa IA está lendo os nomes e números para você. Aguarde um instante.</p>
         </div>
       )}
 
       {error && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3">
+        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3 animate-in slide-in-from-top-2">
           <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 flex-shrink-0">
              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
           </div>
@@ -294,7 +328,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
       <div className="flex justify-center pt-2">
         <button onClick={downloadTemplate} className="text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-600 flex items-center gap-1.5 py-1 transition-colors">
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-          Template Planilha
+          Planilha Modelo (CSV)
         </button>
       </div>
       

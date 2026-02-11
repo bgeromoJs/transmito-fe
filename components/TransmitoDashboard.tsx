@@ -54,18 +54,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  /**
-   * Função para chamar a IA com lógica de Retry (Backoff Exponencial)
-   * Útil para lidar com erros 503 (Servidor Ocupado)
-   */
   const callAiWithRetry = async (prompt: string, retries = 3, delay = 1000): Promise<string | undefined> => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     for (let i = 0; i < retries; i++) {
       try {
         const response = await ai.models.generateContent({
-          // Trocado para 'gemini-flash-latest' para maior estabilidade que as versões preview
-          model: 'gemini-flash-latest',
+          model: 'gemini-3-flash-preview',
           contents: `Mensagem original: "${prompt}"`,
           config: { 
             systemInstruction: "Você é um especialista em comunicação empresarial. Sua tarefa é reescrever mensagens de WhatsApp para torná-las profissionais, cordiais e envolventes. Mantenha o marcador {name} inalterado. Retorne APENAS o texto reescrito, sem aspas ou comentários.",
@@ -78,7 +73,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         
         if (isUnavailable && i < retries - 1) {
           setAiStatus(`Servidor ocupado... tentando novamente (${i + 1}/${retries})`);
-          await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i))); // Delay dobrado a cada tentativa
+          await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i))); 
           continue;
         }
         throw error;
@@ -110,16 +105,12 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  /**
-   * Função de envio direto via WASender API
-   */
   const sendDirectMessage = async (phone: string, text: string): Promise<boolean> => {
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
 
     if (!token || token.includes('EAAB') || token.includes('TOKEN')) {
       console.warn("⚠️ Token WASender não configurado. Simulando envio...");
       await new Promise(resolve => setTimeout(resolve, 300));
-      // Simula falha aleatória para testar a listagem de erros
       return Math.random() > 0.05; 
     }
 
@@ -168,7 +159,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       failedContacts: []
     });
 
-    const CHUNK_SIZE = 5; // Reduzido para melhor visualização do progresso
+    const CHUNK_SIZE = 5; 
     
     for (let i = 0; i < contacts.length; i += CHUNK_SIZE) {
       const chunk = contacts.slice(i, i + CHUNK_SIZE);
