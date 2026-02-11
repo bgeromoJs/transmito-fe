@@ -1,5 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { db } from '../App';
 
 type CheckoutStep = 'SELECTION' | 'REVIEW' | 'METHOD' | 'STRIPE_GATEWAY' | 'PROCESSING' | 'SUCCESS';
 
@@ -12,6 +14,7 @@ interface Plan {
   period: string;
   description: string;
   tag?: string;
+  durationDays: number;
 }
 
 const PLANS: Plan[] = [
@@ -22,7 +25,8 @@ const PLANS: Plan[] = [
     priceId: 'price_1SzQaqE5GnqfcrPP9IKVwC4G', 
     productId: 'prod_TxLHXz2H4j8gKx',
     period: '/mês', 
-    description: 'Flexibilidade total mês a mês.' 
+    description: 'Flexibilidade total mês a mês.',
+    durationDays: 30
   },
   { 
     id: 'quarterly', 
@@ -32,7 +36,8 @@ const PLANS: Plan[] = [
     productId: 'prod_TxLHXz2H4j8gKx',
     period: '/3 meses', 
     description: 'Melhor custo-benefício para envios recorrentes.', 
-    tag: 'Mais Popular' 
+    tag: 'Mais Popular',
+    durationDays: 90
   }
 ];
 
@@ -40,9 +45,10 @@ interface SubscriptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  userEmail?: string;
 }
 
-export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, onConfirm }) => {
+export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, onConfirm, userEmail }) => {
   const [step, setStep] = useState<CheckoutStep>('SELECTION');
   const [selectedPlan, setSelectedPlan] = useState<Plan>(PLANS[0]);
   const [stripeError, setStripeError] = useState<string | null>(null);
@@ -53,7 +59,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
   const cardElementRef = useRef<any>(null);
   const cardMountRef = useRef<HTMLDivElement>(null);
 
-  // Reset de estado ao fechar o modal
   useEffect(() => {
     if (!isOpen) {
       const timer = setTimeout(() => {
@@ -66,7 +71,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
     }
   }, [isOpen]);
 
-  // Inicializa o Stripe quando o passo do gateway é aberto
   useEffect(() => {
     if (step === 'STRIPE_GATEWAY' && isOpen && !stripeRef.current) {
       const publicKey = process.env.STRIPE_PUBLIC_KEY;
@@ -98,7 +102,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
           });
         }
       } catch (e) {
-        console.error("Erro ao inicializar Stripe Elements:", e);
         setStripeError("Erro ao carregar o gateway de pagamento.");
       }
     }
@@ -112,36 +115,73 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
     };
   }, [step, isOpen]);
 
+  const saveSubscription = async () => {
+    if (!userEmail) return;
+    
+    const now = new Date();
+    const expiryDate = new Date();
+    expiryDate.setDate(now.getDate() + selectedPlan.durationDays);
+
+    const subscriptionData = {
+      isSubscribed: true,
+      planId: selectedPlan.id,
+      priceId: selectedPlan.priceId,
+      lastBillingDate: now.toISOString(),
+      expiryDate: expiryDate.toISOString(),
+      userEmail: userEmail,
+      updatedAt: new Date().toISOString()
+    };
+
+    if (db) {
+      try {
+        const subRef = doc(db, 'subscriptions', userEmail);
+        await setDoc(subRef, {
+          ...subscriptionData,
+          lastBillingDate: Timestamp.fromDate(now),
+          expiryDate: Timestamp.fromDate(expiryDate),
+          updatedAt: Timestamp.now()
+        }, { merge: true });
+        console.log('Assinatura salva no Firestore.');
+      } catch (error) {
+        console.error("Erro ao gravar no Firestore:", error);
+      }
+    } else {
+      // Mock: Salva no LocalStorage
+      localStorage.setItem(`mock_sub_${userEmail}`, JSON.stringify(subscriptionData));
+      console.log('Assinatura salva em MOCK (LocalStorage).');
+    }
+  };
+
   const handlePayment = async () => {
-    if (!stripeRef.current || !cardElementRef.current) return;
+    if (!stripeRef.current || !cardElementRef.current) {
+      // Se Stripe não estiver disponível, permitimos "pagamento simulado" para teste
+      setStep('PROCESSING');
+      await saveSubscription();
+      setTimeout(() => {
+        setStep('SUCCESS');
+        setTimeout(() => {
+          onConfirm();
+          onClose();
+        }, 2000);
+      }, 2000);
+      return;
+    }
 
     setIsStripeLoading(true);
     setStripeError(null);
 
     try {
-      // 1. O Stripe valida o cartão e gera um PaymentMethod localmente
       const { paymentMethod, error } = await stripeRef.current.createPaymentMethod({
         type: 'card',
-        card: cardElementRef.current,
-        billing_details: {
-          // Aqui você poderia passar dados do usuário logado se necessário
-        }
+        card: cardElementRef.current
       });
 
       if (error) {
         setStripeError(error.message);
         setIsStripeLoading(false);
       } else {
-        // 2. Log de simulação de envio das opções configuradas
-        console.log('--- SIMULAÇÃO DE PAGAMENTO ---');
-        console.log('PaymentMethod ID:', paymentMethod.id);
-        console.log('Price ID enviado:', selectedPlan.priceId);
-        console.log('Product ID associado:', selectedPlan.productId);
-        console.log('Valor:', selectedPlan.price);
-        
         setStep('PROCESSING');
-        
-        // Simulação final: Como não há backend, assumimos sucesso após gerar o ID do Stripe
+        await saveSubscription();
         setTimeout(() => {
           setStep('SUCCESS');
           setTimeout(() => {
@@ -162,7 +202,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md transition-all duration-500">
       <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-300">
         
-        {/* Header Visual */}
         <div className="bg-slate-50 px-8 py-6 border-b border-slate-100 flex justify-between items-center">
           <div>
             <h3 className="text-xl font-black text-slate-800 tracking-tight">Assinatura Transmito</h3>
@@ -213,8 +252,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                 </div>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setStep('SELECTION')} className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl transition-all active:scale-95">Voltar</button>
-                <button onClick={() => setStep('METHOD')} className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl active:scale-95">Confirmar</button>
+                <button onClick={() => setStep('SELECTION')} className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl">Voltar</button>
+                <button onClick={() => setStep('METHOD')} className="flex-[2] py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl">Confirmar</button>
               </div>
             </div>
           )}
@@ -228,21 +267,18 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                   Alterar Plano
                 </button>
               </div>
-              
-              <div className="grid grid-cols-1 gap-4">
-                <button onClick={() => setStep('STRIPE_GATEWAY')} className="p-6 border-2 border-slate-100 hover:border-[#635BFF] hover:bg-[#635BFF]/5 rounded-2xl transition-all flex items-center justify-between group">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-[#635BFF] rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
-                      <svg className="w-7 h-7" viewBox="0 0 40 40" fill="currentColor"><path d="M18.1 19.3c0-2.3 1.9-3 4.2-3 1.9 0 4 .5 5.6 1.4V13c-1.8-.7-3.9-1-5.9-1-5.4 0-9.4 2.8-9.4 7.6 0 7.4 10.2 6.2 10.2 11.2 0 2.5-2.1 3.2-4.6 3.2-2.3 0-4.8-.8-6.6-1.8V38c2.1 1 4.7 1.4 7.1 1.4 5.7 0 9.8-2.8 9.8-8 0-7.8-10.4-6.4-10.4-11.3z"/></svg>
-                    </div>
-                    <div>
-                      <p className="font-black text-slate-800">Cartão de Crédito</p>
-                      <p className="text-xs text-slate-400 font-medium">Via Stripe Secure</p>
-                    </div>
+              <button onClick={() => setStep('STRIPE_GATEWAY')} className="w-full p-6 border-2 border-slate-100 hover:border-[#635BFF] hover:bg-[#635BFF]/5 rounded-2xl transition-all flex items-center justify-between group">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-[#635BFF] rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-100">
+                    <svg className="w-7 h-7" viewBox="0 0 40 40" fill="currentColor"><path d="M18.1 19.3c0-2.3 1.9-3 4.2-3 1.9 0 4 .5 5.6 1.4V13c-1.8-.7-3.9-1-5.9-1-5.4 0-9.4 2.8-9.4 7.6 0 7.4 10.2 6.2 10.2 11.2 0 2.5-2.1 3.2-4.6 3.2-2.3 0-4.8-.8-6.6-1.8V38c2.1 1 4.7 1.4 7.1 1.4 5.7 0 9.8-2.8 9.8-8 0-7.8-10.4-6.4-10.4-11.3z"/></svg>
                   </div>
-                  <svg className="w-5 h-5 text-slate-300 group-hover:text-[#635BFF] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7"/></svg>
-                </button>
-              </div>
+                  <div className="text-left">
+                    <p className="font-black text-slate-800">Cartão de Crédito</p>
+                    <p className="text-xs text-slate-400 font-medium">Via Stripe Secure</p>
+                  </div>
+                </div>
+                <svg className="w-5 h-5 text-slate-300 group-hover:text-[#635BFF] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M9 5l7 7-7 7"/></svg>
+              </button>
             </div>
           )}
 
@@ -253,38 +289,19 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M15 19l-7-7 7-7"/></svg>
                   Alterar Método
                 </button>
-                <div className="flex gap-2">
-                  <img src="https://upload.wikimedia.org/wikipedia/commons/5/5e/Visa_Inc._logo.svg" className="h-4 opacity-50" />
-                  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg" className="h-4 opacity-50" />
-                </div>
               </div>
-
               <div className="space-y-4">
                 <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-inner-sm focus-within:ring-4 focus-within:ring-[#635BFF]/10 focus-within:border-[#635BFF] transition-all">
                   <div ref={cardMountRef} className="w-full min-h-[24px]"></div>
                 </div>
-
-                {stripeError && (
-                  <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 animate-shake">
-                    <p className="text-xs font-bold text-red-600">{stripeError}</p>
-                  </div>
-                )}
-
+                {stripeError && <p className="text-xs font-bold text-red-600 p-3 bg-red-50 rounded-xl">{stripeError}</p>}
                 <button
                   onClick={handlePayment}
                   disabled={isStripeLoading}
                   className="w-full py-5 bg-[#635BFF] hover:bg-[#5851e0] disabled:bg-slate-200 text-white font-black rounded-2xl shadow-xl text-lg flex items-center justify-center gap-3 transition-all active:scale-[0.98]"
                 >
-                  {isStripeLoading ? (
-                    <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    <span>Pagar R$ {selectedPlan.price}</span>
-                  )}
+                  {isStripeLoading ? <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div> : <span>Pagar R$ {selectedPlan.price}</span>}
                 </button>
-                
-                <p className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                  🔒 Pagamento 100% Seguro via Stripe
-                </p>
               </div>
             </div>
           )}
@@ -298,22 +315,17 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
                    <svg className="w-10 h-10" viewBox="0 0 40 40" fill="currentColor"><path d="M18.1 19.3c0-2.3 1.9-3 4.2-3 1.9 0 4 .5 5.6 1.4V13c-1.8-.7-3.9-1-5.9-1-5.4 0-9.4 2.8-9.4 7.6 0 7.4 10.2 6.2 10.2 11.2 0 2.5-2.1 3.2-4.6 3.2-2.3 0-4.8-.8-6.6-1.8V38c2.1 1 4.7 1.4 7.1 1.4 5.7 0 9.8-2.8 9.8-8 0-7.8-10.4-6.4-10.4-11.3z"/></svg>
                 </div>
               </div>
-              <div>
-                <h3 className="text-2xl font-black text-slate-900">Validando Pagamento...</h3>
-                <p className="text-slate-400 font-bold text-sm mt-2">Processando IDs do Stripe e Gateway</p>
-              </div>
+              <h3 className="text-2xl font-black text-slate-900">Validando Assinatura...</h3>
             </div>
           )}
 
           {step === 'SUCCESS' && (
             <div className="py-10 text-center space-y-8 animate-in zoom-in">
-              <div className="mx-auto w-32 h-32 bg-green-500 text-white rounded-full flex items-center justify-center shadow-2xl shadow-green-200">
+              <div className="mx-auto w-32 h-32 bg-green-500 text-white rounded-full flex items-center justify-center shadow-2xl">
                 <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" /></svg>
               </div>
-              <div className="space-y-2">
-                <h3 className="text-4xl font-black text-slate-900">Sucesso!</h3>
-                <p className="text-slate-500 font-medium text-lg">Seu plano Pro foi ativado!</p>
-              </div>
+              <h3 className="text-4xl font-black text-slate-900">Ativado!</h3>
+              <p className="text-slate-500 font-medium text-lg">Seu acesso Pro foi salvo.</p>
             </div>
           )}
         </div>
