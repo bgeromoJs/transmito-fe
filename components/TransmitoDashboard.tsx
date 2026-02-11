@@ -80,7 +80,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') setDeferredPrompt(null);
     } else {
-      alert("Para instalar:\nAndroid: Menu > Instalar\niOS: Compartilhar > Adicionar à Tela de Início");
+      alert("Instalação:\nAndroid: Menu > Instalar\niOS: Compartilhar > Adicionar à Tela de Início");
     }
   };
 
@@ -99,7 +99,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   const notifyProgress = (sent: number, total: number, isFinished = false, isStopped = false) => {
     if ("Notification" in window && Notification.permission === "granted") {
       const title = isFinished ? 'Concluído ✅' : isStopped ? 'Interrompido ⚠️' : 'Transmito 🚀';
-      const body = isFinished ? `Sucesso: ${sent}/${total}` : `Enviando: ${sent}/${total}`;
+      const body = isFinished ? `Sucesso: ${sent}/${total}` : `Progresso: ${sent}/${total}`;
       new Notification(title, { body, tag: 'transmito', silent: true });
     }
   };
@@ -125,7 +125,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   const handleStopTransmission = () => {
     shouldStopRef.current = true;
     if (abortControllerRef.current) abortControllerRef.current.abort();
-    setTransmission(prev => prev ? { ...prev, isStopped: true, currentName: 'Parando...' } : null);
+    setTransmission(prev => prev ? { ...prev, isStopped: true, currentName: 'Interrompendo...' } : null);
     setNextSendCountdown(0);
   };
 
@@ -137,7 +137,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     shouldStopRef.current = false;
     await requestWakeLock();
     
-    // Reset status localmente para performance
     const updatedContacts = [...contacts];
     setTransmission({ total: contacts.length, sent: 0, errors: 0, currentName: 'Iniciando...', isCompleted: false });
     
@@ -156,7 +155,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         if (success) localSent++; else localErrors++;
         updatedContacts[i] = { ...contact, status: success ? 'sent' : 'failed' };
 
-        // Atualiza apenas o Modal para manter performance fluida
         setTransmission(prev => prev ? ({
           ...prev,
           sent: localSent,
@@ -164,12 +162,11 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
           currentName: contact.name
         }) : null);
 
-        // Notifica apenas a cada 5 mensagens ou no final
         if (i % 5 === 0 || i === contacts.length - 1) notifyProgress(localSent, contacts.length);
 
         if (i < contacts.length - 1 && !shouldStopRef.current) {
           let wait = isDelayEnabled ? delay : 1;
-          if (user.email === 'teste@transmito.com') wait = 2;
+          if (user.email === 'teste@transmito.com') wait = 5; // Tempo visível para demonstração
           
           setNextSendCountdown(wait);
           for (let s = wait; s > 0; s--) {
@@ -177,13 +174,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             setNextSendCountdown(s);
             await new Promise(r => setTimeout(r, 1000));
           }
+          setNextSendCountdown(0);
         }
       }
     } catch (e) {
       console.error("Erro na transmissão:", e);
     } finally {
       const wasStopped = shouldStopRef.current;
-      // Atualiza a lista completa APENAS uma vez no final para evitar lag
       setContacts(updatedContacts);
       
       setTransmission(prev => prev ? ({ 
@@ -220,42 +217,44 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       <SubscriptionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onConfirm={(expiry) => onSubscribe(expiry)} userEmail={user.email} />
 
       {transmission && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/95 overflow-y-auto">
-          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6 text-center space-y-5 animate-in zoom-in duration-200">
-            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">
-              {transmission.isStopped ? "Interrompido" : transmission.isCompleted ? "Concluído" : "Transmitindo..."}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-8 text-center space-y-6 animate-in zoom-in duration-300">
+            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">
+              {transmission.isStopped ? "Interrompido" : transmission.isCompleted ? "Concluído" : "Transmitindo"}
             </h3>
             
             <div className="space-y-4">
-              <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+              <div className="w-full bg-slate-100 h-8 rounded-full overflow-hidden border border-slate-200 shadow-inner">
                 <div 
-                  className={`h-full transition-all duration-300 ${transmission.isStopped ? 'bg-orange-500' : transmission.isCompleted ? 'bg-green-500' : 'bg-blue-600'}`} 
+                  className={`h-full transition-all duration-500 ${transmission.isStopped ? 'bg-orange-500' : transmission.isCompleted ? 'bg-green-500' : 'bg-blue-600'}`} 
                   style={{ width: `${Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100)}%` }} 
                 />
               </div>
               
               {!transmission.isCompleted && !transmission.isStopped && (
-                <div className="py-3 bg-blue-50 rounded-2xl border border-blue-100">
-                  <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Próxima Mensagem</p>
-                  <p className="text-3xl font-black text-blue-600">{nextSendCountdown}s</p>
+                <div className="py-5 bg-blue-50 rounded-3xl border-2 border-blue-100 shadow-inner animate-pulse">
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">Próximo Envio em</p>
+                  <p className="text-4xl font-black text-blue-600 tracking-tighter">
+                    {nextSendCountdown > 0 ? `${nextSendCountdown}s` : 'Disparando...'}
+                  </p>
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-              <div><p className="text-[8px] font-black text-slate-400 uppercase">Sucesso</p><p className="text-xl font-black text-green-600">{transmission.sent}</p></div>
-              <div><p className="text-[8px] font-black text-slate-400 uppercase">Falhas</p><p className="text-xl font-black text-red-500">{transmission.errors}</p></div>
-              <div><p className="text-[8px] font-black text-slate-400 uppercase">Total</p><p className="text-xl font-black text-slate-400">{transmission.total}</p></div>
+            <div className="grid grid-cols-3 gap-3 bg-slate-50 p-6 rounded-3xl border border-slate-100">
+              <div><p className="text-[9px] font-black text-slate-400 uppercase">Sucesso</p><p className="text-2xl font-black text-green-600">{transmission.sent}</p></div>
+              <div className="border-x border-slate-200 px-2"><p className="text-[9px] font-black text-slate-400 uppercase">Falhas</p><p className="text-2xl font-black text-red-500">{transmission.errors}</p></div>
+              <div><p className="text-[9px] font-black text-slate-400 uppercase">Total</p><p className="text-2xl font-black text-slate-300">{transmission.total}</p></div>
             </div>
 
             <div className="space-y-3">
               {!transmission.isCompleted && !transmission.isStopped ? (
-                <button onClick={handleStopTransmission} className="w-full py-4 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95">
-                  PARAR ENVIO
+                <button onClick={handleStopTransmission} className="w-full py-5 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-xl shadow-red-200 active:scale-95 transition-all">
+                  PARAR ENVIO AGORA
                 </button>
               ) : (
-                <button onClick={() => setTransmission(null)} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest active:scale-95">
-                  FECHAR
+                <button onClick={() => setTransmission(null)} className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-sm uppercase tracking-widest shadow-lg active:scale-95 transition-all">
+                  FECHAR RELATÓRIO
                 </button>
               )}
             </div>
@@ -263,60 +262,96 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      <header className="sticky top-2 z-40 bg-white/95 border border-slate-200 rounded-2xl p-3 flex items-center justify-between shadow-sm">
+      <header className="sticky top-2 z-40 bg-white/90 backdrop-blur-md border border-slate-200 rounded-2xl p-3 flex items-center justify-between shadow-lg">
         <div className="relative" ref={menuRef}>
-          <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-9 h-9 rounded-full overflow-hidden border-2 border-slate-100">
+          <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-10 h-10 rounded-full overflow-hidden border-2 border-slate-100 hover:border-blue-400 transition-all">
             <img src={user.picture} className="w-full h-full object-cover" />
           </button>
           {showProfileMenu && (
-            <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-xl p-2 border border-slate-100 animate-in fade-in slide-in-from-top-1">
-              <button onClick={handleInstallClick} className="w-full text-left p-3 text-[10px] font-black text-blue-600 hover:bg-blue-50 rounded-lg mb-1">BAIXAR APP</button>
-              <button onClick={onLogout} className="w-full text-left p-3 text-[10px] font-black text-red-500 hover:bg-red-50 rounded-lg">SAIR</button>
+            <div className="absolute top-full left-0 mt-3 w-56 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl p-2 border border-slate-100 animate-in fade-in slide-in-from-top-2">
+              <button onClick={handleInstallClick} className="w-full text-left p-3 text-[11px] font-black text-blue-600 hover:bg-blue-50 rounded-xl mb-1 flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                INSTALAR APLICATIVO
+              </button>
+              <button onClick={onLogout} className="w-full text-left p-3 text-[11px] font-black text-red-500 hover:bg-red-50 rounded-xl flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                ENCERRAR SESSÃO
+              </button>
             </div>
           )}
         </div>
-        <button onClick={handleTransmit} disabled={isSending || contacts.length === 0} className={`px-8 py-3 rounded-full font-black text-white text-xs transition-all ${isSending ? 'bg-slate-300' : 'bg-blue-600 active:scale-95 shadow-md'}`}>
+        <button 
+          onClick={handleTransmit} 
+          disabled={isSending || contacts.length === 0} 
+          className={`px-10 py-3.5 rounded-full font-black text-white text-xs tracking-widest transition-all ${isSending ? 'bg-slate-300' : 'bg-blue-600 hover:bg-blue-700 active:scale-95 shadow-xl shadow-blue-200'}`}
+        >
           {isSending ? "ENVIANDO..." : `TRANSMITIR (${contacts.length})`}
         </button>
       </header>
 
-      <main className="grid lg:grid-cols-12 gap-5">
-        <div className="lg:col-span-5 space-y-5">
-          <section className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Módulos de Segurança</h3>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-blue-50/50 rounded-xl">
-                <span className="text-xs font-black text-blue-700">Intervalo Ativo</span>
-                <input type="checkbox" checked={isDelayEnabled} onChange={() => setIsDelayEnabled(!isDelayEnabled)} className="w-5 h-5 accent-blue-600" />
+      <main className="grid lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-5 space-y-6">
+          <section className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 hover:shadow-md transition-shadow">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-5">Configurações de Segurança</h3>
+            <div className="space-y-5">
+              <div className="flex items-center justify-between p-4 bg-blue-50/50 rounded-2xl border border-blue-100/50">
+                <div className="flex flex-col">
+                  <span className="text-[11px] font-black text-blue-700 uppercase">Intervalo Inteligente</span>
+                  <span className="text-[9px] text-blue-400 font-bold">RECOMENDADO</span>
+                </div>
+                <input type="checkbox" checked={isDelayEnabled} onChange={() => setIsDelayEnabled(!isDelayEnabled)} className="w-6 h-6 accent-blue-600 cursor-pointer" />
               </div>
               <div className={!isDelayEnabled ? 'opacity-30 pointer-events-none' : ''}>
-                <div className="flex justify-between text-[9px] font-black text-slate-500 mb-2 uppercase"><span>Tempo Médio</span><span className="text-blue-600">{delay}s</span></div>
-                <input type="range" min="10" max="300" step="10" value={delay} onChange={(e) => setDelay(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                <div className="flex justify-between text-[10px] font-black text-slate-500 mb-3 uppercase tracking-widest">
+                  <span>Tempo Médio</span>
+                  <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">{delay}s</span>
+                </div>
+                <input type="range" min="10" max="300" step="10" value={delay} onChange={(e) => setDelay(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
               </div>
             </div>
           </section>
 
-          <section className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 space-y-3">
+          <section className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100 space-y-4">
             <div className="flex justify-between items-center">
-               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mensagem</h3>
-               <button onClick={improveMessageWithAI} disabled={!message.trim()} className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-3 py-1.5 rounded-lg active:scale-95">{aiStatus}</button>
+               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Mensagem</h3>
+               <button 
+                onClick={improveMessageWithAI} 
+                disabled={!message.trim() || isImproving} 
+                className="text-[9px] font-black text-white uppercase bg-slate-900 px-4 py-2 rounded-xl active:scale-95 shadow-lg shadow-slate-100"
+               >
+                 {aiStatus}
+               </button>
             </div>
-            <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Olá {name}..." className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-400 resize-none" />
+            <textarea 
+              value={message} 
+              onChange={(e) => setMessage(e.target.value)} 
+              placeholder="Olá {name}, como você está?..." 
+              className="w-full h-40 p-5 bg-slate-50 border border-slate-100 rounded-[1.5rem] text-sm outline-none focus:border-blue-400 focus:bg-white transition-all resize-none shadow-inner" 
+            />
           </section>
 
-          <section className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100">
+          <section className="bg-white rounded-[2.5rem] p-6 shadow-sm border border-slate-100">
             <FileUpload onDataExtracted={setContacts} />
           </section>
         </div>
 
         <div className="lg:col-span-7">
-          <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[300px]">
-            <div className="p-5 border-b border-slate-50 flex justify-between items-center">
-               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fila ({contacts.length})</h3>
-               {contacts.length > 0 && <button onClick={() => setContacts([])} className="text-[9px] font-black text-red-400 uppercase">Limpar</button>}
+          <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[400px]">
+            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Fila de Envio ({contacts.length})</h3>
+               {contacts.length > 0 && (
+                <button onClick={() => setContacts([])} className="text-[9px] font-black text-red-400 uppercase hover:text-red-600 transition-colors">Limpar Tudo</button>
+               )}
             </div>
-            <div className="flex-1 overflow-auto max-h-[500px]">
-              <ContactTable contacts={contacts} />
+            <div className="flex-1 overflow-auto bg-slate-50/20">
+              {contacts.length > 0 ? (
+                <ContactTable contacts={contacts} />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-300 opacity-50">
+                   <ChatIcon className="w-12 h-12 mb-3" />
+                   <p className="text-[10px] font-black uppercase tracking-widest">Nenhum contato importado</p>
+                </div>
+              )}
             </div>
           </section>
         </div>
