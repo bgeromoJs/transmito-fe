@@ -10,6 +10,7 @@ export interface UserProfile {
   email: string;
   picture: string;
   isSubscribed?: boolean;
+  expiryDate?: string; // ISO String ou Timestamp string
 }
 
 export interface AppState {
