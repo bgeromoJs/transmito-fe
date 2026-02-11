@@ -1,6 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+// Fix: Ensure named exports are correctly imported from firebase/firestore
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import type { Firestore } from 'firebase/firestore';
 import { db } from '../App';
 
 type CheckoutStep = 'SELECTION' | 'REVIEW' | 'METHOD' | 'STRIPE_GATEWAY' | 'PROCESSING' | 'SUCCESS';
@@ -134,7 +136,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
 
     if (db) {
       try {
-        const subRef = doc(db, 'subscriptions', userEmail);
+        // Fix: Use firestore functions and cast db to Firestore
+        const subRef = doc(db as Firestore, 'subscriptions', userEmail);
         await setDoc(subRef, {
           ...subscriptionData,
           lastBillingDate: Timestamp.fromDate(now),
