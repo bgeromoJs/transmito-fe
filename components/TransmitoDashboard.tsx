@@ -24,7 +24,6 @@ interface TransmissionStatus {
   currentName: string;
   isCompleted: boolean;
   isStopped?: boolean;
-  failedContacts: Contact[];
 }
 
 const ChatIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
@@ -66,18 +65,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       setDeferredPrompt(e);
     });
 
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowProfileMenu(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleInstallClick = async () => {
@@ -86,17 +80,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') setDeferredPrompt(null);
     } else {
-      alert("Para instalar no iPhone: Toque no ícone de Compartilhar e selecione 'Adicionar à Tela de Início'.\n\nNo Android: Toque nos três pontos do navegador e selecione 'Instalar aplicativo'.");
+      alert("Para instalar:\nAndroid: Menu > Instalar\niOS: Compartilhar > Adicionar à Tela de Início");
     }
   };
 
   const requestWakeLock = async () => {
     if ('wakeLock' in navigator) {
-      try { 
-        wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); 
-      } catch (err) {
-        console.warn("Wake Lock não suportado");
-      }
+      try { wakeLockRef.current = await (navigator as any).wakeLock.request('screen'); } catch (e) {}
     }
   };
 
@@ -108,79 +98,49 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
   const notifyProgress = (sent: number, total: number, isFinished = false, isStopped = false) => {
     if ("Notification" in window && Notification.permission === "granted") {
-      let title = 'Transmito 🚀';
-      let body = `Progresso: ${sent}/${total}`;
-
-      if (isFinished) {
-        title = 'Concluído ✅';
-        body = `Sucesso: ${sent}/${total} mensagens.`;
-      } else if (isStopped) {
-        title = 'Parado ⚠️';
-        body = `Interrompido em: ${sent}/${total}.`;
-      }
-
-      new Notification(title, { 
-        body, 
-        tag: 'transmito-status',
-        silent: true,
-        icon: 'https://img.icons8.com/fluency/192/000000/chat.png' 
-      });
+      const title = isFinished ? 'Concluído ✅' : isStopped ? 'Interrompido ⚠️' : 'Transmito 🚀';
+      const body = isFinished ? `Sucesso: ${sent}/${total}` : `Enviando: ${sent}/${total}`;
+      new Notification(title, { body, tag: 'transmito', silent: true });
     }
   };
 
   const sendDirectMessage = async (to: string, text: string): Promise<boolean> => {
     const token = process.env.WHATSAPP_ACCESS_TOKEN;
-    const apiUrl = `https://wasenderapi.com/api/send-message`;
-    
     if (!token || token.includes('TOKEN') || user.email === 'teste@transmito.com') {
       await new Promise(r => setTimeout(r, 600));
       return true; 
     }
-    
     try {
       abortControllerRef.current = new AbortController();
-      const response = await fetch(apiUrl, {
+      const response = await fetch(`https://wasenderapi.com/api/send-message`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ to, text }),
         signal: abortControllerRef.current.signal
       });
       return response.ok;
-    } catch (e) { 
-      return false; 
-    }
+    } catch (e) { return false; }
   };
 
   const handleStopTransmission = () => {
     shouldStopRef.current = true;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    // Feedback visual imediato
-    setTransmission(prev => prev ? { ...prev, isStopped: true, currentName: 'Parando agora...' } : null);
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    setTransmission(prev => prev ? { ...prev, isStopped: true, currentName: 'Parando...' } : null);
     setNextSendCountdown(0);
   };
 
   const handleTransmit = async () => {
     if (!user.isSubscribed) return setIsModalOpen(true);
-    if (!message.trim() || contacts.length === 0) return alert('Configure a mensagem e carregue contatos.');
+    if (!message.trim() || contacts.length === 0) return alert('Importe contatos e escreva a mensagem.');
 
     setIsSending(true);
     shouldStopRef.current = false;
     await requestWakeLock();
     
-    setContacts(prev => prev.map(c => ({ ...c, status: undefined })));
-    setTransmission({ 
-      total: contacts.length, 
-      sent: 0, 
-      errors: 0, 
-      currentName: 'Iniciando...', 
-      isCompleted: false, 
-      failedContacts: [] 
-    });
+    // Reset status localmente para performance
+    const updatedContacts = [...contacts];
+    setTransmission({ total: contacts.length, sent: 0, errors: 0, currentName: 'Iniciando...', isCompleted: false });
     
-    if ("vibrate" in navigator) navigator.vibrate(50);
-
     let localSent = 0;
     let localErrors = 0;
 
@@ -188,91 +148,71 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       for (let i = 0; i < contacts.length; i++) {
         if (shouldStopRef.current) break;
 
-        const contact = contacts[i];
-        const personalizedMsg = message.replace(/{name}/gi, contact.name);
-        
-        const success = await sendDirectMessage(contact.phone, personalizedMsg);
+        const contact = updatedContacts[i];
+        const success = await sendDirectMessage(contact.phone, message.replace(/{name}/gi, contact.name));
         
         if (shouldStopRef.current) break;
 
-        if (success) {
-          localSent++;
-          if ("vibrate" in navigator) navigator.vibrate([30]);
-        } else {
-          localErrors++;
-        }
+        if (success) localSent++; else localErrors++;
+        updatedContacts[i] = { ...contact, status: success ? 'sent' : 'failed' };
 
-        setContacts(prev => prev.map(c => c.id === contact.id ? { ...c, status: success ? 'sent' : 'failed' } : c));
-        
-        setTransmission(prev => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            sent: localSent,
-            errors: localErrors,
-            failedContacts: success ? prev.failedContacts : [...prev.failedContacts, contact],
-            currentName: contact.name
-          };
-        });
+        // Atualiza apenas o Modal para manter performance fluida
+        setTransmission(prev => prev ? ({
+          ...prev,
+          sent: localSent,
+          errors: localErrors,
+          currentName: contact.name
+        }) : null);
 
-        if (i % 2 === 0 || i === contacts.length - 1) {
-          notifyProgress(localSent + localErrors, contacts.length);
-        }
+        // Notifica apenas a cada 5 mensagens ou no final
+        if (i % 5 === 0 || i === contacts.length - 1) notifyProgress(localSent, contacts.length);
 
-        // BLOCO DO CONTADOR: Correção aqui
         if (i < contacts.length - 1 && !shouldStopRef.current) {
-          let waitSeconds = isDelayEnabled ? delay : 1;
-          if (user.email === 'teste@transmito.com') waitSeconds = 5; // Tempo visível para teste
-
-          // Define o estado inicial do countdown antes do loop de espera
-          setNextSendCountdown(waitSeconds);
-
-          for (let s = waitSeconds; s > 0; s--) {
-            if (shouldStopRef.current) {
-              setNextSendCountdown(0);
-              break;
-            }
-            // Atualiza o estado a cada segundo
+          let wait = isDelayEnabled ? delay : 1;
+          if (user.email === 'teste@transmito.com') wait = 2;
+          
+          setNextSendCountdown(wait);
+          for (let s = wait; s > 0; s--) {
+            if (shouldStopRef.current) break;
             setNextSendCountdown(s);
             await new Promise(r => setTimeout(r, 1000));
           }
-          setNextSendCountdown(0);
         }
-        
-        if (shouldStopRef.current) break;
       }
+    } catch (e) {
+      console.error("Erro na transmissão:", e);
     } finally {
       const wasStopped = shouldStopRef.current;
-      setTransmission(prev => {
-        if (!prev) return null;
-        if (wasStopped) {
-          notifyProgress(localSent, contacts.length, false, true);
-          return { ...prev, isCompleted: true, isStopped: true, currentName: 'Interrompido' };
-        } else {
-          notifyProgress(localSent, contacts.length, true);
-          return { ...prev, isCompleted: true, currentName: 'Finalizado' };
-        }
-      });
+      // Atualiza a lista completa APENAS uma vez no final para evitar lag
+      setContacts(updatedContacts);
+      
+      setTransmission(prev => prev ? ({ 
+        ...prev, 
+        isCompleted: true, 
+        isStopped: wasStopped,
+        currentName: wasStopped ? 'Interrompido' : 'Finalizado' 
+      }) : null);
       
       setIsSending(false);
       setNextSendCountdown(0);
       releaseWakeLock();
+      if ("vibrate" in navigator) navigator.vibrate(200);
     }
   };
 
   const improveMessageWithAI = async () => {
-    if (!message.trim()) return;
+    if (!message.trim() || isImproving) return;
     setIsImproving(true);
     setAiStatus("Melhorando...");
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Melhore esta mensagem para WhatsApp mantendo a variável {name} no contexto: "${message}"`,
-        config: { systemInstruction: "Seja persuasivo e profissional. Retorne apenas a mensagem melhorada." }
+        contents: `Melhore esta mensagem para WhatsApp (mantenha {name}): "${message}"`,
+        config: { systemInstruction: "Retorne apenas o texto melhorado, curto e direto." }
       });
       if (response.text) setMessage(response.text.trim());
-    } catch (e) { console.error(e); } finally { setIsImproving(false); setAiStatus("✨ Otimizar com IA"); }
+    } catch (e) {} finally { setIsImproving(false); setAiStatus("✨ Otimizar com IA"); }
   };
 
   return (
@@ -280,59 +220,42 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       <SubscriptionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onConfirm={(expiry) => onSubscribe(expiry)} userEmail={user.email} />
 
       {transmission && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 text-center space-y-6">
-            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">
-              {transmission.isStopped ? "Interrompido" : transmission.isCompleted ? "Concluído" : "Transmitindo"}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/95 overflow-y-auto">
+          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-6 text-center space-y-5 animate-in zoom-in duration-200">
+            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+              {transmission.isStopped ? "Interrompido" : transmission.isCompleted ? "Concluído" : "Transmitindo..."}
             </h3>
+            
             <div className="space-y-4">
-              <div className="w-full bg-slate-100 h-8 rounded-full overflow-hidden relative border border-slate-200 shadow-inner">
+              <div className="w-full bg-slate-100 h-6 rounded-full overflow-hidden border border-slate-200 shadow-inner">
                 <div 
-                  className={`h-full transition-all duration-500 ${transmission.isStopped ? 'bg-orange-500' : transmission.isCompleted ? 'bg-green-500' : 'bg-blue-600'}`} 
+                  className={`h-full transition-all duration-300 ${transmission.isStopped ? 'bg-orange-500' : transmission.isCompleted ? 'bg-green-500' : 'bg-blue-600'}`} 
                   style={{ width: `${Math.round(((transmission.sent + transmission.errors) / transmission.total) * 100)}%` }} 
                 />
               </div>
               
               {!transmission.isCompleted && !transmission.isStopped && (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center px-4 py-4 bg-blue-50 rounded-2xl border-2 border-blue-100 animate-pulse">
-                    <div className="text-left">
-                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none mb-1">Intervalo de Segurança</p>
-                      <p className="text-3xl font-black text-blue-600 leading-none">
-                        {nextSendCountdown > 0 ? `${nextSendCountdown}s` : 'Enviando...'}
-                      </p>
-                    </div>
-                    <ChatIcon className="text-blue-300 w-10 h-10" />
-                  </div>
+                <div className="py-3 bg-blue-50 rounded-2xl border border-blue-100">
+                  <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-1">Próxima Mensagem</p>
+                  <p className="text-3xl font-black text-blue-600">{nextSendCountdown}s</p>
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3 bg-slate-50 p-6 rounded-3xl border border-slate-100">
-              <div><p className="text-[9px] font-black text-slate-400 uppercase">Sucesso</p><p className="text-2xl font-black text-green-600">{transmission.sent}</p></div>
-              <div className="border-x border-slate-200"><p className="text-[9px] font-black text-slate-400 uppercase">Falhas</p><p className="text-2xl font-black text-red-500">{transmission.errors}</p></div>
-              <div><p className="text-[9px] font-black text-slate-400 uppercase">Total</p><p className="text-2xl font-black text-slate-300">{transmission.total}</p></div>
+            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <div><p className="text-[8px] font-black text-slate-400 uppercase">Sucesso</p><p className="text-xl font-black text-green-600">{transmission.sent}</p></div>
+              <div><p className="text-[8px] font-black text-slate-400 uppercase">Falhas</p><p className="text-xl font-black text-red-500">{transmission.errors}</p></div>
+              <div><p className="text-[8px] font-black text-slate-400 uppercase">Total</p><p className="text-xl font-black text-slate-400">{transmission.total}</p></div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              {!transmission.isCompleted && !transmission.isStopped && (
-                <>
-                  <button 
-                    onClick={handleStopTransmission}
-                    className="w-full py-5 bg-red-600 text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-red-700 transition-all active:scale-95 shadow-lg shadow-red-200 flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clipRule="evenodd" /></svg>
-                    PARAR ENVIO AGORA
-                  </button>
-                  <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Aguarde o processamento</p>
-                </>
-              )}
-              {(transmission.isCompleted || transmission.isStopped) && (
-                <button 
-                  onClick={() => setTransmission(null)} 
-                  className="w-full py-5 bg-slate-900 text-white shadow-lg rounded-2xl font-black text-sm uppercase tracking-widest transition-all hover:bg-black"
-                >
-                  FECHAR E CONTINUAR
+            <div className="space-y-3">
+              {!transmission.isCompleted && !transmission.isStopped ? (
+                <button onClick={handleStopTransmission} className="w-full py-4 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95">
+                  PARAR ENVIO
+                </button>
+              ) : (
+                <button onClick={() => setTransmission(null)} className="w-full py-4 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest active:scale-95">
+                  FECHAR
                 </button>
               )}
             </div>
@@ -340,81 +263,60 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
-      <header className="sticky top-2 z-40 bg-white/95 backdrop-blur-md rounded-2xl shadow-sm border border-slate-200 p-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="relative" ref={menuRef}>
-            <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-10 h-10 rounded-full overflow-hidden border-2 border-slate-200 hover:border-blue-400 transition-colors">
-              <img src={user.picture} className="w-full h-full object-cover" />
-            </button>
-            {showProfileMenu && (
-              <div className="absolute top-full left-0 mt-2 w-56 glass-menu rounded-2xl shadow-xl p-2 z-50 animate-in slide-in-from-top-2">
-                <button onClick={handleInstallClick} className="w-full text-left p-3 text-xs font-black text-blue-600 hover:bg-blue-50 rounded-xl mb-1 flex items-center gap-2">
-                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                   BAIXAR APP
-                </button>
-                <button onClick={onLogout} className="w-full text-left p-3 text-xs font-black text-red-500 hover:bg-red-50 rounded-xl">SAIR</button>
-              </div>
-            )}
-          </div>
+      <header className="sticky top-2 z-40 bg-white/95 border border-slate-200 rounded-2xl p-3 flex items-center justify-between shadow-sm">
+        <div className="relative" ref={menuRef}>
+          <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-9 h-9 rounded-full overflow-hidden border-2 border-slate-100">
+            <img src={user.picture} className="w-full h-full object-cover" />
+          </button>
+          {showProfileMenu && (
+            <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-xl shadow-xl p-2 border border-slate-100 animate-in fade-in slide-in-from-top-1">
+              <button onClick={handleInstallClick} className="w-full text-left p-3 text-[10px] font-black text-blue-600 hover:bg-blue-50 rounded-lg mb-1">BAIXAR APP</button>
+              <button onClick={onLogout} className="w-full text-left p-3 text-[10px] font-black text-red-500 hover:bg-red-50 rounded-lg">SAIR</button>
+            </div>
+          )}
         </div>
-        <button onClick={handleTransmit} disabled={isSending || contacts.length === 0} className={`px-10 py-3.5 rounded-full font-black text-white text-sm transition-all shadow-md ${isSending ? 'bg-slate-300 animate-pulse' : 'bg-blue-600 hover:bg-blue-700 active:scale-95'}`}>
+        <button onClick={handleTransmit} disabled={isSending || contacts.length === 0} className={`px-8 py-3 rounded-full font-black text-white text-xs transition-all ${isSending ? 'bg-slate-300' : 'bg-blue-600 active:scale-95 shadow-md'}`}>
           {isSending ? "ENVIANDO..." : `TRANSMITIR (${contacts.length})`}
         </button>
       </header>
 
-      <main className="grid lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-5 space-y-6">
-          <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
-            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Módulos Anti-Ban</h3>
+      <main className="grid lg:grid-cols-12 gap-5">
+        <div className="lg:col-span-5 space-y-5">
+          <section className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Módulos de Segurança</h3>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-blue-50/50 rounded-2xl border border-blue-100">
-                <div className="flex flex-col">
-                  <span className="text-xs font-black text-blue-700">Intervalo Inteligente</span>
-                  <span className="text-[9px] text-blue-400 font-bold uppercase">Previne bloqueios</span>
-                </div>
-                <input type="checkbox" checked={isDelayEnabled} onChange={() => setIsDelayEnabled(!isDelayEnabled)} className="w-6 h-6 rounded-md border-blue-200 text-blue-600 cursor-pointer" />
-              </div>
-              <div className={`flex items-center justify-between p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 ${!isDelayEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
-                <div className="flex flex-col">
-                  <span className="text-xs font-black text-indigo-700">Inteligência Humana</span>
-                  <span className="text-[9px] text-indigo-400 font-bold uppercase">Simula comportamento real</span>
-                </div>
-                <input type="checkbox" checked={isHumanMode} onChange={() => setIsHumanMode(!isHumanMode)} className="w-6 h-6 rounded-md border-indigo-200 text-indigo-600 cursor-pointer" />
+              <div className="flex items-center justify-between p-3 bg-blue-50/50 rounded-xl">
+                <span className="text-xs font-black text-blue-700">Intervalo Ativo</span>
+                <input type="checkbox" checked={isDelayEnabled} onChange={() => setIsDelayEnabled(!isDelayEnabled)} className="w-5 h-5 accent-blue-600" />
               </div>
               <div className={!isDelayEnabled ? 'opacity-30 pointer-events-none' : ''}>
-                <div className="flex justify-between text-[10px] font-black text-slate-500 mb-2"><span>TEMPO MÉDIO</span><span className="text-blue-600 font-black">{delay}s</span></div>
+                <div className="flex justify-between text-[9px] font-black text-slate-500 mb-2 uppercase"><span>Tempo Médio</span><span className="text-blue-600">{delay}s</span></div>
                 <input type="range" min="10" max="300" step="10" value={delay} onChange={(e) => setDelay(parseInt(e.target.value))} className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
               </div>
             </div>
           </section>
 
-          <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100 space-y-4">
+          <section className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100 space-y-3">
             <div className="flex justify-between items-center">
-               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Mensagem</h3>
-               <button 
-                 onClick={improveMessageWithAI} 
-                 disabled={isImproving || !message} 
-                 className="px-4 py-2 bg-slate-900 hover:bg-black text-[10px] font-black text-white uppercase rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50 flex items-center gap-1.5"
-               >
-                 {aiStatus}
-               </button>
+               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mensagem</h3>
+               <button onClick={improveMessageWithAI} disabled={!message.trim()} className="text-[9px] font-black text-blue-600 uppercase bg-blue-50 px-3 py-1.5 rounded-lg active:scale-95">{aiStatus}</button>
             </div>
-            <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Olá {name}, como vai?..." className="w-full h-40 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-400 resize-none transition-all" />
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Olá {name}..." className="w-full h-32 p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-400 resize-none" />
           </section>
 
-          <section className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-100">
+          <section className="bg-white rounded-[2rem] p-5 shadow-sm border border-slate-100">
             <FileUpload onDataExtracted={setContacts} />
           </section>
         </div>
 
         <div className="lg:col-span-7">
-          <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[400px]">
-            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
-               <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Fila ({contacts.length})</h3>
-               {contacts.length > 0 && <button onClick={() => setContacts([])} className="text-[10px] font-black text-red-400 uppercase hover:text-red-500">Limpar</button>}
+          <section className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden flex flex-col min-h-[300px]">
+            <div className="p-5 border-b border-slate-50 flex justify-between items-center">
+               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fila ({contacts.length})</h3>
+               {contacts.length > 0 && <button onClick={() => setContacts([])} className="text-[9px] font-black text-red-400 uppercase">Limpar</button>}
             </div>
-            <div className="flex-1 overflow-auto bg-slate-50/20">
-              {contacts.length > 0 ? <ContactTable contacts={contacts} /> : <div className="flex flex-col items-center justify-center h-full text-slate-300 space-y-3 opacity-50"><ChatIcon className="w-12 h-12" /><p className="text-[10px] font-black uppercase tracking-widest text-center">Importe uma lista para começar.</p></div>}
+            <div className="flex-1 overflow-auto max-h-[500px]">
+              <ContactTable contacts={contacts} />
             </div>
           </section>
         </div>
