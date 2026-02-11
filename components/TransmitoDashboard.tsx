@@ -37,6 +37,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 }) => {
   const [isSending, setIsSending] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
+  const [aiStatus, setAiStatus] = useState<string>("✨ Otimizar com IA");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [transmission, setTransmission] = useState<TransmissionStatus | null>(null);
@@ -52,29 +53,59 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  /**
+   * Função para chamar a IA com lógica de Retry (Backoff Exponencial)
+   * Útil para lidar com erros 503 (Servidor Ocupado)
+   */
+  const callAiWithRetry = async (prompt: string, retries = 3, delay = 1000): Promise<string | undefined> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await ai.models.generateContent({
+          // Trocado para 'gemini-flash-latest' para maior estabilidade que as versões preview
+          model: 'gemini-flash-latest',
+          contents: `Mensagem original: "${prompt}"`,
+          config: { 
+            systemInstruction: "Você é um especialista em comunicação empresarial. Sua tarefa é reescrever mensagens de WhatsApp para torná-las profissionais, cordiais e envolventes. Mantenha o marcador {name} inalterado. Retorne APENAS o texto reescrito, sem aspas ou comentários.",
+            temperature: 0.7 
+          }
+        });
+        return response.text?.trim();
+      } catch (error: any) {
+        const isUnavailable = error?.message?.includes('503') || error?.message?.includes('UNAVAILABLE');
+        
+        if (isUnavailable && i < retries - 1) {
+          setAiStatus(`Servidor ocupado... tentando novamente (${i + 1}/${retries})`);
+          await new Promise(resolve => setTimeout(resolve, delay * Math.pow(2, i))); // Delay dobrado a cada tentativa
+          continue;
+        }
+        throw error;
+      }
+    }
+  };
+
   const improveMessageWithAI = async () => {
     if (!message.trim()) {
       alert("Escreva algo primeiro!");
       return;
     }
     setIsImproving(true);
+    setAiStatus("Melhorando...");
+    
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Mensagem original: "${message}"`,
-        config: { 
-          systemInstruction: "Você é um especialista em comunicação empresarial. Sua tarefa é reescrever mensagens de WhatsApp para torná-las profissionais, cordiais e envolventes. Mantenha o marcador {name} inalterado. Retorne APENAS o texto reescrito, sem aspas ou comentários.",
-          temperature: 0.7 
-        }
-      });
-      const newText = response.text?.trim();
+      const newText = await callAiWithRetry(message);
       if (newText) setMessage(newText);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro na IA:", error);
-      alert("Erro ao conectar com a IA. Verifique se sua API_KEY no arquivo .env está correta.");
+      if (error?.message?.includes('503')) {
+        alert("A Google está com muita demanda no momento. Por favor, tente novamente em alguns instantes.");
+      } else {
+        alert("Erro ao conectar com a IA. Verifique sua chave de API.");
+      }
     } finally {
       setIsImproving(false);
+      setAiStatus("✨ Otimizar com IA");
     }
   };
 
@@ -91,9 +122,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
 
     try {
-      // Garante que o número tenha o prefixo +
       const formattedPhone = phone.startsWith('+') ? phone : `+${phone}`;
-
       const response = await fetch(`https://wasenderapi.com/api/send-message`, {
         method: 'POST',
         headers: {
@@ -119,9 +148,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  /**
-   * Processamento de transmissão em massa acelerado
-   */
   const handleTransmit = async () => {
     if (!user.isSubscribed) {
       setIsModalOpen(true);
@@ -145,7 +171,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       const chunk = contacts.slice(i, i + CHUNK_SIZE);
       
       await Promise.all(chunk.map(async (contact) => {
-        // Atualizado para substituir {name} em vez de {nome}
         const personalizedMsg = message.replace(/{name}/gi, contact.name);
         const success = await sendDirectMessage(contact.phone, personalizedMsg);
 
@@ -288,9 +313,9 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
                 <button
                   onClick={improveMessageWithAI}
                   disabled={isImproving || !message}
-                  className="px-4 py-2 rounded-full bg-indigo-600 text-white text-[10px] font-black uppercase hover:scale-105 transition-all disabled:opacity-50"
+                  className="px-4 py-2 rounded-full bg-indigo-600 text-white text-[10px] font-black uppercase hover:scale-105 transition-all disabled:opacity-50 min-w-[140px]"
                 >
-                  {isImproving ? "Melhorando..." : "✨ Otimizar com IA"}
+                  {aiStatus}
                 </button>
               </div>
               <textarea
