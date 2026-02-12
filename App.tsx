@@ -41,6 +41,11 @@ const App: React.FC = () => {
   const [isVerifyingSubscription, setIsVerifyingSubscription] = useState(false);
 
   const checkSubscription = async (email: string) => {
+    // Regra de ouro: Usuário de teste sempre é assinante
+    if (email === 'teste@transmito.com') {
+      return { isValid: true, expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() };
+    }
+
     if (!db) {
       const mock = localStorage.getItem(`mock_sub_${email}`);
       return mock ? JSON.parse(mock) : { isValid: false };

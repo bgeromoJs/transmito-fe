@@ -4,6 +4,9 @@ export interface Contact {
   name: string;
   phone: string;
   status?: 'sent' | 'failed';
+  selected?: boolean;
+  sentCount: number;
+  failCount: number;
 }
 
 export interface UserProfile {
