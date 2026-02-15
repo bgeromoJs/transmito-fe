@@ -13,8 +13,9 @@ export interface UserProfile {
   name: string;
   email: string;
   picture: string;
+  whatsappNumber?: string; // Number linked to the account
   isSubscribed?: boolean;
-  expiryDate?: string; // ISO String ou Timestamp string
+  expiryDate?: string; // ISO String or Timestamp string
 }
 
 export interface AppState {

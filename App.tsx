@@ -42,26 +42,37 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isVerifyingSubscription, setIsVerifyingSubscription] = useState(false);
 
-  const checkSubscription = async (email: string) => {
-    // Regra de ouro: Usuário de teste sempre é assinante
+  const fetchUserData = async (email: string) => {
+    let whatsappNumber = undefined;
+    let isValid = false;
+    let expiryDate = undefined;
+
+    // Test account rules
     if (email === 'teste@transmito.com') {
-      return { isValid: true, expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() };
+      return { 
+        isValid: true, 
+        expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        whatsappNumber: '5511999999999' 
+      };
     }
 
     if (!db) {
       const mock = localStorage.getItem(`mock_sub_${email}`);
       return mock ? JSON.parse(mock) : { isValid: false };
     }
+
     try {
       const subSnap = await getDoc(doc(db as Firestore, 'subscriptions', email));
       if (subSnap.exists()) {
         const data = subSnap.data();
         const expiry = data.expiryDate instanceof Timestamp ? data.expiryDate.toDate() : new Date(data.expiryDate);
-        const isValid = data.isSubscribed && expiry > new Date();
-        return { isValid, expiryDate: expiry.toISOString() };
+        isValid = data.isSubscribed && expiry > new Date();
+        expiryDate = expiry.toISOString();
+        whatsappNumber = data.whatsappNumber;
       }
     } catch (e) { console.error(e); }
-    return { isValid: false };
+
+    return { isValid, expiryDate, whatsappNumber };
   };
 
   useEffect(() => {
@@ -69,8 +80,13 @@ const App: React.FC = () => {
       const saved = localStorage.getItem('transmito_user');
       if (saved) {
         const parsed = JSON.parse(saved);
-        const sub = await checkSubscription(parsed.email);
-        setUser({ ...parsed, isSubscribed: sub.isValid, expiryDate: sub.expiryDate });
+        const data = await fetchUserData(parsed.email);
+        setUser({ 
+          ...parsed, 
+          isSubscribed: data.isValid, 
+          expiryDate: data.expiryDate,
+          whatsappNumber: data.whatsappNumber
+        });
       }
       setIsInitializing(false);
     };
@@ -79,11 +95,38 @@ const App: React.FC = () => {
 
   const handleLogin = async (profile: UserProfile) => {
     setIsVerifyingSubscription(true);
-    const sub = await checkSubscription(profile.email);
-    const userProfile = { ...profile, isSubscribed: sub.isValid, expiryDate: sub.expiryDate };
+    const data = await fetchUserData(profile.email);
+    const userProfile = { 
+      ...profile, 
+      isSubscribed: data.isValid, 
+      expiryDate: data.expiryDate,
+      whatsappNumber: data.whatsappNumber
+    };
     setUser(userProfile);
     localStorage.setItem('transmito_user', JSON.stringify(userProfile));
     setIsVerifyingSubscription(false);
+  };
+
+  const updateWhatsappNumber = async (number: string) => {
+    if (!user) return;
+    const cleanNumber = number.replace(/\D/g, '');
+    
+    if (db) {
+      try {
+        const subRef = doc(db as Firestore, 'subscriptions', user.email);
+        await updateDoc(subRef, { whatsappNumber: cleanNumber });
+      } catch (e) {
+        console.error("Erro ao salvar número no Firebase:", e);
+      }
+    } else {
+       const mock = localStorage.getItem(`mock_sub_${user.email}`);
+       const data = mock ? JSON.parse(mock) : {};
+       localStorage.setItem(`mock_sub_${user.email}`, JSON.stringify({ ...data, whatsappNumber: cleanNumber }));
+    }
+
+    const updatedUser = { ...user, whatsappNumber: cleanNumber };
+    setUser(updatedUser);
+    localStorage.setItem('transmito_user', JSON.stringify(updatedUser));
   };
 
   const handleLogout = () => {
@@ -100,13 +143,18 @@ const App: React.FC = () => {
     );
   }
 
-  // Lógica de Renderização Condicional
   if (!user) {
     return <GoogleLogin onLogin={handleLogin} />;
   }
 
   if (!isWhatsappConnected) {
-    return <WahaSessionManager onSessionActive={() => setIsWhatsappConnected(true)} />;
+    return (
+      <WahaSessionManager 
+        user={user}
+        onSessionActive={() => setIsWhatsappConnected(true)} 
+        onUpdateNumber={updateWhatsappNumber}
+      />
+    );
   }
 
   return (
