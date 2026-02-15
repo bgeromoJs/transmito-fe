@@ -341,7 +341,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
                   <span>Média de Espera</span>
                   <span className="text-blue-600 bg-blue-100/50 px-3 py-1 rounded-lg font-mono tabular-nums">{formatTime(delay)}</span>
                 </div>
-                <input type="range" min="10" max="300" step="10" value={delay} onChange={(e) => setDelay(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                <input type="range" min="60" max="600" step="10" value={delay} onChange={(e) => setDelay(parseInt(e.target.value))} className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-blue-600" />
               </div>
             </div>
           </section>
