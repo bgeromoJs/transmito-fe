@@ -10,6 +10,7 @@ type ConnectionState = 'IDLE' | 'CHECKING' | 'REQUESTING_CODE' | 'WAITING_AUTH' 
 export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessionActive }) => {
   const [state, setState] = useState<ConnectionState>('CHECKING');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [targetPhone, setTargetPhone] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -27,9 +28,27 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
         const isConnected = data.status === 'WORKING' || data.engine?.state === 'CONNECTED';
         
         if (isConnected) {
-          onSessionActive();
+          const connectedId = data.me?.id || ''; // formato: 55119... @c.us
+          const connectedNumber = connectedId.split('@')[0];
+          
+          // Se o usuário acabou de solicitar um código para um número específico
+          if (targetPhone) {
+            if (connectedNumber === targetPhone) {
+              onSessionActive();
+            } else {
+              setError(`O WhatsApp conectado (${connectedNumber}) não coincide com o número solicitado (${targetPhone}). Por favor, use o número correto.`);
+              setState('IDLE');
+              setTargetPhone(null);
+            }
+          } else {
+            // Se já estava conectado e não há um "alvo" específico na memória desta sessão
+            onSessionActive();
+          }
         } else {
-          setState('IDLE');
+          // Se não estiver conectado, apenas permite que o usuário peça o código
+          if (state !== 'WAITING_AUTH') {
+            setState('IDLE');
+          }
         }
       } else {
         setState('IDLE');
@@ -38,11 +57,13 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
       setError("Falha ao conectar com o servidor WAHA.");
       setState('ERROR');
     }
-  }, [API_URL, API_KEY, onSessionActive]);
+  }, [API_URL, API_KEY, onSessionActive, targetPhone, state]);
 
   useEffect(() => {
-    checkSessionStatus();
-  }, [checkSessionStatus]);
+    if (state === 'CHECKING') {
+      checkSessionStatus();
+    }
+  }, [state, checkSessionStatus]);
 
   // Polling quando está esperando autenticação
   useEffect(() => {
@@ -55,17 +76,15 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
 
   const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!phoneNumber) return;
-    
-    // Limpa formatação: apenas números
     const cleanPhone = phoneNumber.replace(/\D/g, '');
     if (cleanPhone.length < 10) {
-      setError("Número inválido.");
+      setError("Digite o número completo com DDD (ex: 5511999999999)");
       return;
     }
 
     setState('REQUESTING_CODE');
     setError(null);
+    setTargetPhone(cleanPhone); // Registra qual número estamos tentando conectar
 
     try {
       const response = await fetch(`${API_URL}/api/default/auth/request-code`, {
@@ -86,12 +105,15 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
         setPairingCode(data.code);
         setState('WAITING_AUTH');
       } else {
-        setError("Não foi possível gerar o código. Tente novamente.");
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.message || "Não foi possível gerar o código. Verifique se o número está correto.");
         setState('IDLE');
+        setTargetPhone(null);
       }
     } catch (e) {
       setError("Erro de rede ao solicitar código.");
       setState('IDLE');
+      setTargetPhone(null);
     }
   };
 
@@ -117,12 +139,12 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
           <p className="text-sm text-slate-500 font-medium">
             {state === 'WAITING_AUTH' 
               ? "Agora, digite o código abaixo no seu WhatsApp." 
-              : "Sua sessão expirou ou não está conectada."}
+              : "Sua sessão não está conectada ou o número é inválido."}
           </p>
         </div>
 
         {error && (
-          <div className="p-4 bg-red-50 text-red-600 text-xs font-bold rounded-2xl border border-red-100">
+          <div className="p-4 bg-red-50 text-red-600 text-xs font-bold rounded-2xl border border-red-100 animate-pulse">
             {error}
           </div>
         )}
@@ -130,10 +152,10 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
         {state === 'IDLE' || state === 'REQUESTING_CODE' ? (
           <form onSubmit={handleRequestCode} className="space-y-4">
             <div className="space-y-2 text-left">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Seu Telefone (DDD + Número)</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest">Seu Telefone (Ex: 55119...)</label>
               <input 
                 type="text" 
-                placeholder="Ex: 5511999999999"
+                placeholder="5511999999999"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 className="w-full p-5 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:border-blue-500 outline-none transition-all"
@@ -144,7 +166,7 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
               disabled={state === 'REQUESTING_CODE'}
               className="w-full py-5 bg-blue-600 text-white font-black rounded-2xl shadow-xl shadow-blue-100 active:scale-95 transition-all disabled:opacity-50"
             >
-              {state === 'REQUESTING_CODE' ? "GERANDO CÓDIGO..." : "GERAR CÓDIGO DE PAREAMENTO"}
+              {state === 'REQUESTING_CODE' ? "SOLICITANDO..." : "VINCULAR NÚMERO"}
             </button>
           </form>
         ) : state === 'WAITING_AUTH' ? (
@@ -158,25 +180,25 @@ export const WahaSessionManager: React.FC<WahaSessionManagerProps> = ({ onSessio
             </div>
             
             <div className="p-6 bg-slate-50 rounded-3xl text-left space-y-4 border border-slate-100">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Como conectar:</p>
-              <ol className="text-xs text-slate-600 space-y-2 font-bold leading-relaxed">
-                <li>1. Abra o WhatsApp no seu celular</li>
-                <li>2. Vá em <span className="text-slate-900">Configurações</span> ou <span className="text-slate-900">Aparelhos Conectados</span></li>
-                <li>3. Selecione <span className="text-blue-600">Conectar com número de telefone</span></li>
-                <li>4. Digite o código acima</li>
-              </ol>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Passo a passo:</p>
+              <ul className="text-xs text-slate-600 space-y-2 font-bold leading-relaxed">
+                <li>• No celular, abra o <span className="text-slate-900">WhatsApp</span></li>
+                <li>• Toque em <span className="text-slate-900">Aparelhos Conectados</span></li>
+                <li>• Selecione <span className="text-blue-600">Conectar com número de telefone</span></li>
+                <li>• Digite o código exibido acima</li>
+              </ul>
             </div>
 
             <div className="flex items-center justify-center gap-3 py-4">
               <div className="w-2 h-2 bg-blue-600 rounded-full animate-ping"></div>
-              <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">Aguardando Autenticação...</p>
+              <p className="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">Sincronizando com {targetPhone}...</p>
             </div>
 
             <button 
-              onClick={() => setState('IDLE')}
-              className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600"
+              onClick={() => { setState('IDLE'); setTargetPhone(null); }}
+              className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 underline"
             >
-              Cancelar e tentar outro número
+              Trocar número de telefone
             </button>
           </div>
         ) : null}

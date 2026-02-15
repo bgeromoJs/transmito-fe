@@ -23,7 +23,12 @@ export const ContactTable: React.FC<ContactTableProps> = ({ contacts, onToggleCo
                 <input 
                   type="checkbox" 
                   checked={allSelected} 
-                  ref={el => el && (el.indeterminate = someSelected && !allSelected)}
+                  // Fix: Ensure the ref callback returns void to avoid TypeScript error with boolean return value from assignment
+                  ref={(el) => {
+                    if (el) {
+                      el.indeterminate = someSelected && !allSelected;
+                    }
+                  }}
                   onChange={(e) => onToggleAll(e.target.checked)}
                   className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer transition-all"
                 />

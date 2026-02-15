@@ -96,17 +96,29 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   };
 
   const sendDirectMessage = async (to: string, text: string): Promise<boolean> => {
-    const token = process.env.WHATSAPP_ACCESS_TOKEN;
-    if (!token || token.includes('TOKEN') || user.email === 'teste@transmito.com') {
+    const apiUrl = process.env.WAHA_API_URL;
+    const apiKey = process.env.WAHA_API_KEY;
+
+    // Em modo demonstração sem configuração real, simulamos o sucesso.
+    if (user.email === 'teste@transmito.com' || !apiUrl || !apiKey) {
       await new Promise(r => setTimeout(r, 800));
       return true; 
     }
+
     try {
       abortControllerRef.current = new AbortController();
-      const response = await fetch(`https://wasenderapi.com/api/send-message`, {
+      const response = await fetch(`${apiUrl}/api/sendText`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, text }),
+        headers: { 
+          'accept': 'application/json',
+          'X-Api-Key': apiKey,
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ 
+          chatId: `${to}@c.us`, 
+          text: text,
+          session: "default"
+        }),
         signal: abortControllerRef.current.signal
       });
       return response.ok;
