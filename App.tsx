@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleLogin } from './components/GoogleLogin';
 import { TransmitoDashboard } from './components/TransmitoDashboard';
+import { WahaSessionManager } from './components/WahaSessionManager';
 import { UserProfile, Contact } from './types';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, updateDoc, Timestamp, Firestore } from 'firebase/firestore';
@@ -35,6 +36,7 @@ export const db = app ? getFirestore(app) : null;
 
 const App: React.FC = () => {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [isWhatsappConnected, setIsWhatsappConnected] = useState(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [message, setMessage] = useState('');
   const [isInitializing, setIsInitializing] = useState(true);
@@ -84,6 +86,12 @@ const App: React.FC = () => {
     setIsVerifyingSubscription(false);
   };
 
+  const handleLogout = () => {
+    setUser(null);
+    setIsWhatsappConnected(false);
+    localStorage.removeItem('transmito_user');
+  };
+
   if (isInitializing || isVerifyingSubscription) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -92,22 +100,27 @@ const App: React.FC = () => {
     );
   }
 
+  // Lógica de Renderização Condicional
+  if (!user) {
+    return <GoogleLogin onLogin={handleLogin} />;
+  }
+
+  if (!isWhatsappConnected) {
+    return <WahaSessionManager onSessionActive={() => setIsWhatsappConnected(true)} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
-      {!user ? (
-        <GoogleLogin onLogin={handleLogin} />
-      ) : (
-        <TransmitoDashboard 
-          user={user} 
-          contacts={contacts} 
-          setContacts={setContacts}
-          message={message}
-          setMessage={setMessage}
-          onLogout={() => { setUser(null); localStorage.removeItem('transmito_user'); }}
-          onSubscribe={(expiry) => setUser({ ...user, isSubscribed: true, expiryDate: expiry })}
-          onCancelSubscription={() => setUser({ ...user, isSubscribed: false })}
-        />
-      )}
+      <TransmitoDashboard 
+        user={user} 
+        contacts={contacts} 
+        setContacts={setContacts}
+        message={message}
+        setMessage={setMessage}
+        onLogout={handleLogout}
+        onSubscribe={(expiry) => setUser({ ...user, isSubscribed: true, expiryDate: expiry })}
+        onCancelSubscription={() => setUser({ ...user, isSubscribed: false })}
+      />
     </div>
   );
 };

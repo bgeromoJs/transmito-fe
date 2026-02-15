@@ -20,8 +20,8 @@ export default defineConfig(({ mode }) => {
       'process.env.FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.FIREBASE_MESSAGING_SENDER_ID),
       'process.env.FIREBASE_APP_ID': JSON.stringify(env.FIREBASE_APP_ID),
       'process.env.WHATSAPP_ACCESS_TOKEN': JSON.stringify(env.WHATSAPP_ACCESS_TOKEN),
+      'process.env.WAHA_API_URL': JSON.stringify(env.WAHA_API_URL || 'https://waha-app-fly.fly.dev'),
+      'process.env.WAHA_API_KEY': JSON.stringify(env.WAHA_API_KEY || '0eeb0aa6d6a64eedadd7f28fc642ec3f'),
     }
-    // Fixed: historyApiFallback is not a valid property of Vite ServerOptions. 
-    // Vite handles SPA routing (redirecting 404s to index.html) automatically.
   };
 });
