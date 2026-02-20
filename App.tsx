@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { GoogleLogin } from './components/GoogleLogin';
 import { TransmitoDashboard } from './components/TransmitoDashboard';
 import { EvolutionSessionManager } from './components/EvolutionSessionManager';
+import { WelcomeUpgrade } from './components/WelcomeUpgrade';
 import { UserProfile, Contact } from './types';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, updateDoc, setDoc, Timestamp, Firestore } from 'firebase/firestore';
@@ -41,6 +42,8 @@ const App: React.FC = () => {
   const [message, setMessage] = useState('');
   const [isInitializing, setIsInitializing] = useState(true);
   const [isVerifyingSubscription, setIsVerifyingSubscription] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [autoOpenSubscription, setAutoOpenSubscription] = useState(false);
 
   const fetchUserData = async (email: string) => {
     let whatsappNumber = undefined;
@@ -125,6 +128,7 @@ const App: React.FC = () => {
           messagesSentToday: data.messagesSentToday,
           lastResetDate: data.lastResetDate
         });
+        if (!data.isValid) setShowWelcome(true);
       }
       setIsInitializing(false);
     };
@@ -146,6 +150,7 @@ const App: React.FC = () => {
     };
     setUser(userProfile);
     localStorage.setItem('transmito_user', JSON.stringify(userProfile));
+    if (!data.isValid) setShowWelcome(true);
     setIsVerifyingSubscription(false);
   };
 
@@ -214,6 +219,19 @@ const App: React.FC = () => {
     return <GoogleLogin onLogin={handleLogin} />;
   }
 
+  if (showWelcome && !user.isSubscribed) {
+    return (
+      <WelcomeUpgrade 
+        user={user} 
+        onContinue={() => setShowWelcome(false)} 
+        onUpgrade={() => {
+          setShowWelcome(false);
+          setAutoOpenSubscription(true);
+        }} 
+      />
+    );
+  }
+
   if (!isWhatsappConnected) {
     return (
       <EvolutionSessionManager 
@@ -236,7 +254,11 @@ const App: React.FC = () => {
         onLogout={handleLogout}
         onDisconnect={() => setIsWhatsappConnected(false)}
         onIncrementUsage={incrementUsage}
-        onSubscribe={(expiry) => setUser({ ...user, isSubscribed: true, expiryDate: expiry, dailyLimit: 9999 })}
+        initialShowSubscription={autoOpenSubscription}
+        onSubscribe={(expiry) => {
+          setUser({ ...user, isSubscribed: true, expiryDate: expiry, dailyLimit: 9999 });
+          setAutoOpenSubscription(false);
+        }}
         onCancelSubscription={() => setUser({ ...user, isSubscribed: false })}
       />
     </div>

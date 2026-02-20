@@ -17,6 +17,7 @@ interface DashboardProps {
   onSubscribe: (expiryDate?: string) => void;
   onCancelSubscription: () => void;
   onIncrementUsage: (count: number) => Promise<void>;
+  initialShowSubscription?: boolean;
 }
 
 interface TransmissionStatus {
@@ -44,12 +45,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   onDisconnect,
   onSubscribe,
   onCancelSubscription,
-  onIncrementUsage
+  onIncrementUsage,
+  initialShowSubscription
 }) => {
   const [isSending, setIsSending] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
   const [aiStatus, setAiStatus] = useState<string>("✨ Otimizar com IA");
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(initialShowSubscription || false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [transmission, setTransmission] = useState<TransmissionStatus | null>(null);
   const [nextSendCountdown, setNextSendCountdown] = useState<number>(0);
