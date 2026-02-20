@@ -163,6 +163,7 @@ const App: React.FC = () => {
         user={user}
         onSessionActive={() => setIsWhatsappConnected(true)} 
         onUpdateNumber={updateWhatsappNumber}
+        onLogout={handleLogout}
       />
     );
   }

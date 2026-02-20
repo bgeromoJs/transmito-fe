@@ -6,11 +6,12 @@ interface EvolutionSessionManagerProps {
   user: UserProfile;
   onSessionActive: () => void;
   onUpdateNumber: (num: string, apikey: string) => Promise<void>;
+  onLogout: () => void;
 }
 
 type ConnectionState = 'IDLE' | 'CHECKING' | 'CREATING_INSTANCE' | 'WAITING_QR' | 'ERROR';
 
-export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = ({ user, onSessionActive, onUpdateNumber }) => {
+export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = ({ user, onSessionActive, onUpdateNumber, onLogout }) => {
   const [state, setState] = useState<ConnectionState>('CHECKING');
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,9 +80,9 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
 
         if (createResponse.ok) {
           const data = await createResponse.json();
-          if (data.hash) {
-            // Save the instance token (hash) to the user profile
-            await onUpdateNumber(user.whatsappNumber || '', data.hash);
+          const token = data.hash || data.instance?.token;
+          if (token) {
+            await onUpdateNumber(user.whatsappNumber || '', token);
           }
           if (data.qrcode?.base64) {
             setQrCode(data.qrcode.base64);
@@ -93,7 +94,13 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
           setState('ERROR');
         }
       } else {
-        // 3. Instance exists, check if we need to connect
+        // 3. Instance exists, update user token if needed
+        const token = instanceData.token || instanceData.hash;
+        if (token && token !== user.apikey) {
+          await onUpdateNumber(user.whatsappNumber || '', token);
+        }
+
+        // Check if we need to connect
         const isConnected = await checkConnectionStatus();
         if (!isConnected) {
           const connectResponse = await fetch(`${API_URL}/instance/connect/${instanceName}`, {
@@ -106,7 +113,6 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
               setQrCode(data.base64);
               setState('WAITING_QR');
             } else if (data.code) {
-               // If it returns a pairing code instead of base64 (unlikely with qrcode: true)
                setError("QR Code não disponível.");
                setState('ERROR');
             }
@@ -148,9 +154,17 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 space-y-6">
         <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-sm font-black text-slate-400 uppercase tracking-widest">
-          {state === 'CHECKING' ? 'Validando Sessão...' : 'Preparando Instância...'}
-        </p>
+        <div className="text-center space-y-2">
+          <p className="text-sm font-black text-slate-400 uppercase tracking-widest">
+            {state === 'CHECKING' ? 'Validando Sessão...' : 'Preparando Instância...'}
+          </p>
+          <button 
+            onClick={onLogout}
+            className="text-[10px] font-black text-slate-300 uppercase tracking-widest hover:text-slate-500 transition-colors"
+          >
+            Cancelar e Sair
+          </button>
+        </div>
       </div>
     );
   }
@@ -173,7 +187,10 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
         {error && (
           <div className="p-5 bg-red-50 text-red-600 text-[11px] font-bold rounded-2xl border border-red-100 leading-relaxed">
             {error}
-            <button onClick={handleRestart} className="block w-full mt-2 text-blue-600 underline uppercase tracking-widest">Tentar Novamente</button>
+            <div className="flex gap-4 mt-3">
+              <button onClick={handleRestart} className="flex-1 py-2 bg-red-100 rounded-xl text-red-700 uppercase tracking-widest text-[9px] font-black">Tentar Novamente</button>
+              <button onClick={onLogout} className="flex-1 py-2 bg-white border border-red-100 rounded-xl text-red-400 uppercase tracking-widest text-[9px] font-black">Sair</button>
+            </div>
           </div>
         )}
 
@@ -197,6 +214,21 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
               <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse"></div>
               <p className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em]">Aguardando leitura do QR Code...</p>
             </div>
+
+            <button 
+              onClick={onLogout}
+              className="w-full py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+            >
+              Voltar ao Login
+            </button>
+          </div>
+        )}
+
+        {state === 'ERROR' && (
+          <div className="pt-4">
+            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
+              Algo deu errado. Tente novamente ou saia.
+            </p>
           </div>
         )}
       </div>
