@@ -9,14 +9,16 @@ interface EvolutionSessionManagerProps {
   onLogout: () => void;
 }
 
-type ConnectionState = 'IDLE' | 'CHECKING' | 'WAITING_PHONE' | 'CREATING_INSTANCE' | 'WAITING_CODE' | 'ERROR';
+type ConnectionState = 'IDLE' | 'CHECKING' | 'WAITING_PHONE' | 'CREATING_INSTANCE' | 'WAITING_CONNECT' | 'ERROR';
 
 export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = ({ user, onSessionActive, onUpdateNumber, onLogout }) => {
   const [state, setState] = useState<ConnectionState>('CHECKING');
   const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [qrCode, setQrCode] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState(user.whatsappNumber || '');
   const [error, setError] = useState<string | null>(null);
   const [instanceName] = useState(user.email.replace(/[^a-zA-Z0-9]/g, '_'));
+  const [connectMethod, setConnectMethod] = useState<'QR' | 'CODE'>('CODE');
 
   const API_URL = process.env.EVOLUTION_API_URL;
   const GLOBAL_API_KEY = process.env.EVOLUTION_GLOBAL_API_KEY;
@@ -67,8 +69,9 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
       
       let instanceData = null;
       if (fetchResponse.ok) {
-        const instances = await fetchResponse.json();
-        instanceData = instances.find((i: any) => i.instanceName === instanceName);
+        const data = await fetchResponse.json();
+        const instances = Array.isArray(data) ? data : (data.instances || []);
+        instanceData = instances.find((i: any) => i.instanceName === instanceName || i.name === instanceName);
       }
 
       const cleanNumber = num.replace(/\D/g, '');
@@ -83,7 +86,7 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
           },
           body: JSON.stringify({
             instanceName: instanceName,
-            qrcode: false,
+            qrcode: true,
             integration: "WHATSAPP-BAILEYS"
           })
         });
@@ -95,19 +98,18 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
             await onUpdateNumber(cleanNumber, token);
           }
           
-          // Get pairing code
-          const codeResponse = await fetch(`${API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`, {
+          // Get connection data (QR and Code)
+          const connectResponse = await fetch(`${API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`, {
             headers: { 'apikey': GLOBAL_API_KEY || '' }
           });
 
-          if (codeResponse.ok) {
-            const codeData = await codeResponse.json();
-            if (codeData.code) {
-              setPairingCode(codeData.code);
-              setState('WAITING_CODE');
-            }
+          if (connectResponse.ok) {
+            const connectData = await connectResponse.json();
+            setPairingCode(connectData.pairingCode || connectData.code);
+            setQrCode(connectData.base64);
+            setState('WAITING_CONNECT');
           } else {
-            setError("Erro ao gerar código de pareamento.");
+            setError("Erro ao gerar dados de conexão.");
             setState('ERROR');
           }
         } else {
@@ -124,24 +126,20 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
 
         // Check if we need to connect
         const isConnected = await checkConnectionStatus();
-        if (!isConnected) {
-          const connectResponse = await fetch(`${API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`, {
-            headers: { 'apikey': GLOBAL_API_KEY || '' }
-          });
-          
-          if (connectResponse.ok) {
-            const data = await connectResponse.json();
-            if (data.code) {
-              setPairingCode(data.code);
-              setState('WAITING_CODE');
-            } else {
-               setError("Código de pareamento não disponível.");
-               setState('ERROR');
-            }
-          } else {
-             setError("Erro ao conectar instância.");
-             setState('ERROR');
-          }
+        if (isConnected) return;
+
+        const connectResponse = await fetch(`${API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`, {
+          headers: { 'apikey': GLOBAL_API_KEY || '' }
+        });
+        
+        if (connectResponse.ok) {
+          const data = await connectResponse.json();
+          setPairingCode(data.pairingCode || data.code);
+          setQrCode(data.base64);
+          setState('WAITING_CONNECT');
+        } else {
+           setError("Erro ao conectar instância.");
+           setState('ERROR');
         }
       }
     } catch (e) {
@@ -159,7 +157,7 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
   // Polling for connection
   useEffect(() => {
     let interval: any;
-    if (state === 'WAITING_CODE') {
+    if (state === 'WAITING_CONNECT') {
       interval = setInterval(async () => {
         const connected = await checkConnectionStatus();
         if (connected) clearInterval(interval);
@@ -268,22 +266,59 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
           </div>
         )}
 
-        {state === 'WAITING_CODE' && pairingCode && (
+        {state === 'WAITING_CONNECT' && (
           <div className="space-y-8 animate-in zoom-in">
-            <div className="bg-slate-50 p-8 rounded-3xl border-2 border-slate-100 shadow-inner inline-block w-full">
-              <p className="text-4xl font-black text-blue-600 tracking-[0.2em]">{pairingCode}</p>
+            <div className="flex p-1 bg-slate-100 rounded-2xl mb-4">
+              <button 
+                onClick={() => setConnectMethod('CODE')}
+                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${connectMethod === 'CODE' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                Código de Pareamento
+              </button>
+              <button 
+                onClick={() => setConnectMethod('QR')}
+                className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${connectMethod === 'QR' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                QR Code
+              </button>
             </div>
-            
-            <div className="p-6 bg-slate-50 rounded-3xl text-left space-y-4 border border-slate-100">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Instruções:</p>
-              <ul className="text-xs text-slate-600 space-y-2 font-bold leading-relaxed">
-                <li>1. Abra o WhatsApp no seu celular</li>
-                <li>2. Vá em <span className="text-slate-900">Aparelhos Conectados</span></li>
-                <li>3. Toque em <span className="text-blue-600">Conectar um Aparelho</span></li>
-                <li>4. Toque em <span className="text-blue-600">Conectar com número de telefone</span></li>
-                <li>5. Insira o código acima no seu celular</li>
-              </ul>
-            </div>
+
+            {connectMethod === 'CODE' && pairingCode && (
+              <div className="space-y-8">
+                <div className="bg-slate-50 p-8 rounded-3xl border-2 border-slate-100 shadow-inner inline-block w-full">
+                  <p className="text-4xl font-black text-blue-600 tracking-[0.2em]">{pairingCode}</p>
+                </div>
+                
+                <div className="p-6 bg-slate-50 rounded-3xl text-left space-y-4 border border-slate-100">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Instruções:</p>
+                  <ul className="text-xs text-slate-600 space-y-2 font-bold leading-relaxed">
+                    <li>1. Abra o WhatsApp no seu celular</li>
+                    <li>2. Vá em <span className="text-slate-900">Aparelhos Conectados</span></li>
+                    <li>3. Toque em <span className="text-blue-600">Conectar um Aparelho</span></li>
+                    <li>4. Toque em <span className="text-blue-600">Conectar com número de telefone</span></li>
+                    <li>5. Insira o código acima no seu celular</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {connectMethod === 'QR' && qrCode && (
+              <div className="space-y-8">
+                <div className="bg-white p-4 rounded-3xl border-2 border-slate-100 shadow-inner inline-block">
+                  <img src={qrCode} alt="QR Code WhatsApp" className="w-64 h-64" />
+                </div>
+                
+                <div className="p-6 bg-slate-50 rounded-3xl text-left space-y-4 border border-slate-100">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Instruções:</p>
+                  <ul className="text-xs text-slate-600 space-y-2 font-bold leading-relaxed">
+                    <li>1. Abra o WhatsApp no seu celular</li>
+                    <li>2. Toque em <span className="text-slate-900">Configurações</span> ou <span className="text-slate-900">Menu</span></li>
+                    <li>3. Selecione <span className="text-blue-600">Aparelhos Conectados</span></li>
+                    <li>4. Toque em <span className="text-blue-600">Conectar um Aparelho</span> e aponte para a tela</li>
+                  </ul>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center justify-center gap-3">
               <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-pulse"></div>
