@@ -96,7 +96,7 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
           }
           
           // Get pairing code
-          const codeResponse = await fetch(`${API_URL}/instance/connect/pairingCode/${instanceName}?number=${cleanNumber}`, {
+          const codeResponse = await fetch(`${API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`, {
             headers: { 'apikey': GLOBAL_API_KEY || '' }
           });
 
@@ -125,7 +125,7 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
         // Check if we need to connect
         const isConnected = await checkConnectionStatus();
         if (!isConnected) {
-          const connectResponse = await fetch(`${API_URL}/instance/connect/pairingCode/${instanceName}?number=${cleanNumber}`, {
+          const connectResponse = await fetch(`${API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`, {
             headers: { 'apikey': GLOBAL_API_KEY || '' }
           });
           
