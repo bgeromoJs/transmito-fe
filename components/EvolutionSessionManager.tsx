@@ -23,9 +23,9 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
   const API_URL = process.env.EVOLUTION_API_URL;
   const GLOBAL_API_KEY = process.env.EVOLUTION_GLOBAL_API_KEY;
 
-  const checkConnectionStatus = useCallback(async () => {
+  const checkConnectionStatus = useCallback(async (num?: string) => {
     try {
-      const cleanNumber = phoneNumber.replace(/\D/g, '');
+      const cleanNumber = (num || phoneNumber || '').replace(/\D/g, '');
       const response = await fetch(`${API_URL}/instance/connectionState/${instanceName}${cleanNumber ? `?number=${cleanNumber}` : ''}`, {
         headers: { 'apikey': GLOBAL_API_KEY || '' }
       });
@@ -49,12 +49,39 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
     } catch (e) {
       return false;
     }
-  }, [API_URL, GLOBAL_API_KEY, instanceName, onSessionActive, user.whatsappNumber, user.apikey, onUpdateNumber]);
+  }, [API_URL, GLOBAL_API_KEY, instanceName, onSessionActive, user.whatsappNumber, user.apikey, onUpdateNumber, phoneNumber]);
+
+  const initialCheck = useCallback(async () => {
+    setState('CHECKING');
+    setError(null);
+    
+    try {
+      const fetchResponse = await fetch(`${API_URL}/instance/fetchInstances`, {
+        headers: { 'apikey': GLOBAL_API_KEY || '' }
+      });
+      
+      if (fetchResponse.ok) {
+        const data = await fetchResponse.json();
+        const instances = Array.isArray(data) ? data : (data.instances || []);
+        const instanceData = instances.find((i: any) => i.instanceName === instanceName || i.name === instanceName);
+        
+        if (instanceData) {
+          // Instância existe, vamos ver se está conectada
+          const isConnected = await checkConnectionStatus();
+          if (isConnected) return; // Sucesso, já foi para o sistema
+        }
+      }
+      
+      // Se chegou aqui, ou não existe ou não está conectada.
+      // Vamos pedir o número para prosseguir.
+      setState('WAITING_PHONE');
+    } catch (e) {
+      setState('WAITING_PHONE'); // Em caso de erro no fetch, assume que precisa configurar
+    }
+  }, [API_URL, GLOBAL_API_KEY, instanceName, checkConnectionStatus]);
 
   const createOrConnectInstance = useCallback(async (targetNumber?: string) => {
     const num = targetNumber || phoneNumber;
-    
-    // Se não houver número e não estivermos forçando um, pede o número
     if (!num) {
       setState('WAITING_PHONE');
       return;
@@ -64,7 +91,7 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
     setError(null);
 
     try {
-      // 1. Fetch instances to see if it already exists
+      // 1. Fetch instances (novamente para garantir o estado mais atual)
       const fetchResponse = await fetch(`${API_URL}/instance/fetchInstances`, {
         headers: { 'apikey': GLOBAL_API_KEY || '' }
       });
@@ -126,8 +153,8 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
           await onUpdateNumber(cleanNumber, token);
         }
 
-        // Check if we need to connect
-        const isConnected = await checkConnectionStatus();
+        // Check if we need to connect (novamente com o número limpo)
+        const isConnected = await checkConnectionStatus(cleanNumber);
         if (isConnected) return;
 
         const connectResponse = await fetch(`${API_URL}/instance/connect/${instanceName}?number=${cleanNumber}`, {
@@ -152,9 +179,9 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
 
   useEffect(() => {
     if (state === 'CHECKING') {
-      createOrConnectInstance();
+      initialCheck();
     }
-  }, [state, createOrConnectInstance]);
+  }, [state, initialCheck]);
 
   // Polling for connection
   useEffect(() => {
