@@ -57,6 +57,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   const [nextSendCountdown, setNextSendCountdown] = useState<number>(0);
   const [delay, setDelay] = useState(60);
   const [isDelayEnabled, setIsDelayEnabled] = useState(true);
+  const [editingContact, setEditingContact] = useState<Contact | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const wakeLockRef = useRef<any>(null);
@@ -87,6 +88,19 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
   const handleToggleAll = (selected: boolean) => {
     setContacts(prev => prev.map(c => ({ ...c, selected })));
+  };
+
+  const handleRemoveContact = (id: string) => {
+    if (confirm("Deseja remover este contato da lista?")) {
+      setContacts(prev => prev.filter(c => c.id !== id));
+    }
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingContact) return;
+    setContacts(prev => prev.map(c => c.id === editingContact.id ? editingContact : c));
+    setEditingContact(null);
   };
 
   const requestWakeLock = async () => {
@@ -474,7 +488,13 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             </div>
             <div className="flex-1 overflow-auto bg-slate-50/10">
               {contacts.length > 0 ? (
-                <ContactTable contacts={contacts} onToggleContact={handleToggleContact} onToggleAll={handleToggleAll} />
+                <ContactTable 
+                  contacts={contacts} 
+                  onToggleContact={handleToggleContact} 
+                  onToggleAll={handleToggleAll}
+                  onEditContact={setEditingContact}
+                  onRemoveContact={handleRemoveContact}
+                />
               ) : (
                 <div className="flex flex-col items-center justify-center h-80 text-slate-300 opacity-50 space-y-4">
                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center"><ChatIcon className="w-10 h-10" /></div>
@@ -485,6 +505,57 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
           </section>
         </div>
       </main>
+
+      {/* Edit Contact Modal */}
+      {editingContact && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Editar Contato</h3>
+              <button onClick={() => setEditingContact(null)} className="text-slate-400 hover:text-slate-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome</label>
+                <input 
+                  type="text" 
+                  value={editingContact.name} 
+                  onChange={(e) => setEditingContact({...editingContact, name: e.target.value})}
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-400 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Telefone</label>
+                <input 
+                  type="tel" 
+                  value={editingContact.phone} 
+                  onChange={(e) => setEditingContact({...editingContact, phone: e.target.value})}
+                  className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm outline-none focus:border-blue-400 focus:bg-white transition-all"
+                  required
+                />
+              </div>
+              <div className="pt-4 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setEditingContact(null)}
+                  className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-2xl text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-4 bg-blue-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-blue-200 hover:bg-blue-700 transition-all"
+                >
+                  Salvar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
