@@ -53,6 +53,8 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
 
   const createOrConnectInstance = useCallback(async (targetNumber?: string) => {
     const num = targetNumber || phoneNumber;
+    
+    // Se não houver número e não estivermos forçando um, pede o número
     if (!num) {
       setState('WAITING_PHONE');
       return;
@@ -325,20 +327,34 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
               <p className="text-[9px] font-black text-blue-600 uppercase tracking-[0.2em]">Aguardando pareamento...</p>
             </div>
 
-            <button 
-              onClick={onLogout}
-              className="w-full py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-            >
-              Voltar ao Login
-            </button>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => setState('WAITING_PHONE')}
+                className="w-full py-4 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors bg-blue-50 rounded-2xl"
+              >
+                Alterar Número de Telefone
+              </button>
+              <button 
+                onClick={onLogout}
+                className="w-full py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+              >
+                Voltar ao Login
+              </button>
+            </div>
           </div>
         )}
 
         {state === 'ERROR' && (
-          <div className="pt-4">
+          <div className="pt-4 space-y-4">
             <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">
               Algo deu errado. Tente novamente ou saia.
             </p>
+            <button 
+              onClick={() => setState('WAITING_PHONE')}
+              className="w-full py-4 text-[10px] font-black text-blue-600 uppercase tracking-widest hover:text-blue-700 transition-colors bg-blue-50 rounded-2xl"
+            >
+              Tentar com outro número
+            </button>
           </div>
         )}
       </div>
