@@ -500,20 +500,35 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Olá {name}, como você está?..." className="w-full h-44 p-6 bg-slate-50 border border-slate-100 rounded-[1.8rem] text-sm outline-none focus:border-blue-400 focus:bg-white transition-all resize-none shadow-inner" />
           </section>
 
-          <section className="bg-white rounded-[2.5rem] p-7 shadow-sm border border-slate-100 flex flex-col gap-4">
-             <FileUpload onDataExtracted={setContacts} />
-             <div className="flex items-center gap-3">
-               <label className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-2xl border cursor-pointer transition-all ${isOcrLoading ? 'opacity-50' : ''} ${!user.isSubscribed && user.email !== 'teste@transmito.com' ? 'bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100' : 'bg-blue-50 border-blue-100 text-blue-600 hover:bg-blue-100'}`}>
-                 {!user.isSubscribed && user.email !== 'teste@transmito.com' ? (
-                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                 ) : (
-                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                 )}
-                 <span className="text-[10px] font-black uppercase tracking-widest">
-                   {!user.isSubscribed && user.email !== 'teste@transmito.com' ? 'Extrair de Foto (PRO)' : (isOcrLoading ? 'Processando...' : 'Extrair de Foto')}
-                 </span>
-                 <input type="file" accept="image/*" className="hidden" onChange={handleOcrUpload} disabled={isOcrLoading} />
-               </label>
+          <section className="bg-white rounded-[2.5rem] p-7 shadow-sm border border-slate-100 flex flex-col gap-6">
+             <div className="flex justify-between items-center">
+               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Importar Contatos</h3>
+               {!user.isSubscribed && user.email !== 'teste@transmito.com' && (
+                 <span className="px-3 py-1 bg-amber-100 text-amber-600 text-[9px] font-black rounded-full uppercase tracking-widest">Plano Free</span>
+               )}
+             </div>
+             
+             <FileUpload 
+               onDataExtracted={setContacts} 
+               isSubscribed={user.isSubscribed || false}
+               onShowSubscription={() => setIsModalOpen(true)}
+               isDemo={user.email === 'teste@transmito.com'}
+             />
+
+             <div className="pt-4 border-t border-slate-50">
+               <div className="flex items-center gap-3">
+                 <label className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-2xl border cursor-pointer transition-all ${isOcrLoading ? 'opacity-50' : ''} ${!user.isSubscribed && user.email !== 'teste@transmito.com' ? 'bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100' : 'bg-blue-50 border-blue-100 text-blue-600 hover:bg-blue-100'}`}>
+                   {!user.isSubscribed && user.email !== 'teste@transmito.com' ? (
+                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+                   ) : (
+                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                   )}
+                   <span className="text-[10px] font-black uppercase tracking-widest">
+                     {!user.isSubscribed && user.email !== 'teste@transmito.com' ? 'Extrair de Foto (PRO)' : (isOcrLoading ? 'Processando...' : 'Extrair de Foto')}
+                   </span>
+                   <input type="file" accept="image/*" className="hidden" onChange={handleOcrUpload} disabled={isOcrLoading} />
+                 </label>
+               </div>
              </div>
           </section>
         </div>

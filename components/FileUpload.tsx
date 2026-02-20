@@ -5,6 +5,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 interface FileUploadProps {
   onDataExtracted: (contacts: Contact[]) => void;
+  isSubscribed: boolean;
+  onShowSubscription: () => void;
+  isDemo?: boolean;
 }
 
 declare global {
@@ -14,7 +17,7 @@ declare global {
   }
 }
 
-export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
+export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted, isSubscribed, onShowSubscription, isDemo }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -24,6 +27,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDriveLoading, setIsDriveLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const canUsePremium = isSubscribed || isDemo;
 
   const formatPhoneNumber = (rawPhone: string): string => {
     const digits = rawPhone.replace(/\D/g, '');
@@ -50,6 +55,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
   };
 
   const handleDriveUpload = () => {
+    if (!canUsePremium) return onShowSubscription();
     if (!window.gapi) {
        setError("API do Google não carregada.");
        return;
@@ -172,20 +178,43 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted }) => {
     }
   };
 
+  const handleCameraClick = () => {
+    if (!canUsePremium) return onShowSubscription();
+    setIsCameraActive(true);
+  };
+
   return (
     <div className="space-y-4">
-      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Importar Contatos</h3>
       <div className="grid grid-cols-2 gap-3">
-        <button onClick={() => setIsCameraActive(true)} className="p-4 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-2 transition-all group">
-          <svg className="w-6 h-6 text-slate-400 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Câmera</span>
+        <button 
+          onClick={handleCameraClick} 
+          className={`p-4 border rounded-2xl flex flex-col items-center gap-2 transition-all group ${!canUsePremium ? 'bg-amber-50 border-amber-100' : 'border-slate-200 hover:bg-slate-50'}`}
+        >
+          {canUsePremium ? (
+            <svg className="w-6 h-6 text-slate-400 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
+          ) : (
+            <svg className="w-6 h-6 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+          )}
+          <span className={`text-[10px] font-black uppercase tracking-widest ${!canUsePremium ? 'text-amber-600' : 'text-slate-500'}`}>Câmera {!canUsePremium && '(PRO)'}</span>
         </button>
         <button onClick={() => fileInputRef.current?.click()} className="p-4 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-2 transition-all group">
           <svg className="w-6 h-6 text-slate-400 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
           <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">CSV</span>
         </button>
       </div>
-      <button onClick={handleDriveUpload} className="w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-slate-900 rounded-2xl text-white font-bold text-sm shadow-lg"><img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" className="w-5 h-5" /> Google Drive</button>
+      
+      <button 
+        onClick={handleDriveUpload} 
+        className={`w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-2xl font-bold text-sm shadow-lg transition-all ${!canUsePremium ? 'bg-amber-500 text-white' : 'bg-slate-900 text-white'}`}
+      >
+        {!canUsePremium ? (
+          <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
+        ) : (
+          <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" className="w-5 h-5" />
+        )}
+        Google Drive {!canUsePremium && '(PRO)'}
+      </button>
+
       <div className="flex justify-center pt-2">
         <button onClick={downloadTemplate} className="flex items-center gap-2 px-6 py-3 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100">Baixar Template</button>
       </div>
