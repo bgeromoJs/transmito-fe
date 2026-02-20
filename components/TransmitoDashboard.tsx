@@ -50,6 +50,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 }) => {
   const [isSending, setIsSending] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState<string>("✨ Otimizar com IA");
   const [isModalOpen, setIsModalOpen] = useState(initialShowSubscription || false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -138,6 +139,75 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     if (abortControllerRef.current) abortControllerRef.current.abort();
     setTransmission(prev => prev ? { ...prev, isStopped: true } : null);
     setNextSendCountdown(0);
+  };
+
+  const handleImproveText = async () => {
+    if (!message.trim()) return;
+    setIsImproving(true);
+    setAiStatus("✨ Processando...");
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '' });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Melhore o seguinte texto de mensagem para WhatsApp, tornando-o mais profissional e persuasivo, mantendo a clareza. Retorne APENAS o texto melhorado:\n\n${message}`,
+      });
+      if (response.text) {
+        setMessage(response.text.trim());
+        setAiStatus("✨ Texto Otimizado!");
+        setTimeout(() => setAiStatus("✨ Otimizar com IA"), 3000);
+      }
+    } catch (e) {
+      setAiStatus("❌ Erro na IA");
+      setTimeout(() => setAiStatus("✨ Otimizar com IA"), 3000);
+    } finally {
+      setIsImproving(false);
+    }
+  };
+
+  const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsOcrLoading(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '' });
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: {
+            parts: [
+              { inlineData: { data: base64, mimeType: file.type } },
+              { text: "Extraia os contatos desta imagem (planilha ou lista). Retorne um JSON no formato: [{\"name\": \"Nome\", \"phone\": \"5511999999999\"}]. Retorne APENAS o JSON válido." }
+            ]
+          }
+        });
+        
+        if (response.text) {
+          try {
+            const jsonStr = response.text.replace(/```json|```/g, '').trim();
+            const extracted: any[] = JSON.parse(jsonStr);
+            const newContacts: Contact[] = extracted.map((c, i) => ({
+              id: `ocr-${Date.now()}-${i}`,
+              name: c.name || 'Contato Extraído',
+              phone: c.phone.replace(/\D/g, ''),
+              sentCount: 0,
+              failCount: 0,
+              selected: true
+            }));
+            setContacts(prev => [...prev, ...newContacts]);
+          } catch (err) {
+            alert("Não foi possível processar os contatos da imagem. Tente uma foto mais clara.");
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (e) {
+      alert("Erro ao processar imagem.");
+    } finally {
+      setIsOcrLoading(false);
+      e.target.value = '';
+    }
   };
 
   const handleTransmit = async () => {
@@ -255,21 +325,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const improveMessageWithAI = async () => {
-    if (!message.trim() || isImproving) return;
-    setIsImproving(true);
-    setAiStatus("Otimizando...");
-    try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Melhore esta mensagem para WhatsApp (mantenha {name}): "${message}"`,
-        config: { systemInstruction: "Retorne apenas o texto melhorado, curto e profissional." }
-      });
-      if (response.text) setMessage(response.text.trim());
-    } catch (e) {} finally { setIsImproving(false); setAiStatus("✨ Otimizar com IA"); }
-  };
-
   const handleDisconnect = async () => {
     if (!window.confirm("Tem certeza que deseja desconectar seu WhatsApp?")) return;
     
@@ -343,6 +398,14 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 
       <header className="sticky top-2 z-40 bg-white/90 backdrop-blur-md border border-slate-200 rounded-2xl p-3 flex items-center justify-between shadow-xl">
         <div className="flex items-center gap-3">
+          {!user.isSubscribed && (
+            <div className="hidden md:flex flex-col items-start">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Envios Hoje</p>
+              <p className="text-xs font-bold text-slate-700">
+                {user.messagesSentToday || 0} / {user.dailyLimit || 10}
+              </p>
+            </div>
+          )}
           <div className="relative" ref={menuRef}>
             <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-10 h-10 rounded-full overflow-hidden border-2 border-slate-100 active:scale-90 transition-all shadow-sm">
               <img src={user.picture} className="w-full h-full object-cover" />
@@ -416,12 +479,21 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
           <section className="bg-white rounded-[2.5rem] p-7 shadow-sm border border-slate-100 space-y-4">
             <div className="flex justify-between items-center">
                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Mensagem</h3>
-               <button onClick={improveMessageWithAI} disabled={!message.trim() || isImproving} className="text-[9px] font-black text-white uppercase bg-slate-900 px-5 py-2.5 rounded-xl active:scale-95 shadow-xl transition-all disabled:opacity-50">{aiStatus}</button>
+               <button onClick={handleImproveText} disabled={!message.trim() || isImproving} className="text-[9px] font-black text-white uppercase bg-slate-900 px-5 py-2.5 rounded-xl active:scale-95 shadow-xl transition-all disabled:opacity-50">{aiStatus}</button>
             </div>
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Olá {name}, como você está?..." className="w-full h-44 p-6 bg-slate-50 border border-slate-100 rounded-[1.8rem] text-sm outline-none focus:border-blue-400 focus:bg-white transition-all resize-none shadow-inner" />
           </section>
 
-          <section className="bg-white rounded-[2.5rem] p-7 shadow-sm border border-slate-100"><FileUpload onDataExtracted={setContacts} /></section>
+          <section className="bg-white rounded-[2.5rem] p-7 shadow-sm border border-slate-100 flex flex-col gap-4">
+             <FileUpload onDataExtracted={setContacts} />
+             <div className="flex items-center gap-3">
+               <label className={`flex-1 flex items-center justify-center gap-2 p-4 bg-blue-50 text-blue-600 rounded-2xl border border-blue-100 cursor-pointer hover:bg-blue-100 transition-all ${isOcrLoading ? 'opacity-50' : ''}`}>
+                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                 <span className="text-[10px] font-black uppercase tracking-widest">{isOcrLoading ? 'Processando...' : 'Extrair de Foto'}</span>
+                 <input type="file" accept="image/*" className="hidden" onChange={handleOcrUpload} disabled={isOcrLoading} />
+               </label>
+             </div>
+          </section>
         </div>
 
         <div className="lg:col-span-7">
