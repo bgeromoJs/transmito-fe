@@ -13,6 +13,7 @@ interface DashboardProps {
   message: string;
   setMessage: (msg: string) => void;
   onLogout: () => void;
+  onDisconnect: () => void;
   onSubscribe: (expiryDate?: string) => void;
   onCancelSubscription: () => void;
 }
@@ -39,6 +40,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   message, 
   setMessage,
   onLogout,
+  onDisconnect,
   onSubscribe,
   onCancelSubscription
 }) => {
@@ -96,28 +98,28 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   };
 
   const sendDirectMessage = async (to: string, text: string): Promise<boolean> => {
-    const apiUrl = process.env.WAHA_API_URL;
-    const apiKey = process.env.WAHA_API_KEY;
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const instanceName = user.email.replace(/[^a-zA-Z0-9]/g, '_');
+    const apikey = user.apikey;
 
     // Em modo demonstração sem configuração real, simulamos o sucesso.
-    if (user.email === 'teste@transmito.com' || !apiUrl || !apiKey) {
+    if (user.email === 'teste@transmito.com' || !apiUrl || !apikey) {
       await new Promise(r => setTimeout(r, 800));
       return true; 
     }
 
     try {
       abortControllerRef.current = new AbortController();
-      const response = await fetch(`${apiUrl}/api/sendText`, {
+      const response = await fetch(`${apiUrl}/message/sendText/${instanceName}`, {
         method: 'POST',
         headers: { 
           'accept': 'application/json',
-          'X-Api-Key': apiKey,
+          'apikey': apikey,
           'Content-Type': 'application/json' 
         },
         body: JSON.stringify({ 
-          chatId: `${to}@c.us`, 
-          text: text,
-          session: "default"
+          number: to, 
+          text: text
         }),
         signal: abortControllerRef.current.signal
       });
@@ -242,6 +244,31 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     } catch (e) {} finally { setIsImproving(false); setAiStatus("✨ Otimizar com IA"); }
   };
 
+  const handleDisconnect = async () => {
+    if (!window.confirm("Tem certeza que deseja desconectar seu WhatsApp?")) return;
+    
+    const apiUrl = process.env.EVOLUTION_API_URL;
+    const instanceName = user.email.replace(/[^a-zA-Z0-9]/g, '_');
+    const globalApiKey = process.env.EVOLUTION_GLOBAL_API_KEY;
+
+    try {
+      // Logout and Delete instance
+      await fetch(`${apiUrl}/instance/logout/${instanceName}`, {
+        method: 'DELETE',
+        headers: { 'apikey': user.apikey || '' }
+      });
+      
+      await fetch(`${apiUrl}/instance/delete/${instanceName}`, {
+        method: 'DELETE',
+        headers: { 'apikey': globalApiKey || '' }
+      });
+    } catch (e) {
+      console.error("Erro ao desconectar:", e);
+    } finally {
+      onDisconnect();
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       <SubscriptionModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onConfirm={(expiry) => onSubscribe(expiry)} userEmail={user.email} />
@@ -300,6 +327,12 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
                  <p className="text-[9px] font-bold text-slate-400 truncate">{user.email}</p>
               </div>
               <button onClick={onLogout} className="w-full text-left p-3 text-[11px] font-black text-red-500 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>ENCERRAR SESSÃO</button>
+              <button onClick={handleDisconnect} className="w-full text-left p-3 text-[11px] font-black text-orange-500 hover:bg-orange-50 rounded-xl flex items-center gap-2 transition-colors">
+                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                 </svg>
+                 DESCONECTAR WHATSAPP
+               </button>
             </div>
           )}
         </div>

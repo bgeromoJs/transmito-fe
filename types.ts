@@ -14,6 +14,7 @@ export interface UserProfile {
   email: string;
   picture: string;
   whatsappNumber?: string; // Number linked to the account
+  apikey?: string; // Evolution API instance token
   isSubscribed?: boolean;
   expiryDate?: string; // ISO String or Timestamp string
 }

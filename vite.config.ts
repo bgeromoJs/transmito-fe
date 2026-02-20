@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => {
     define: {
       'process.env.GOOGLE_CLIENT_ID': JSON.stringify(env.GOOGLE_CLIENT_ID),
       'process.env.GOOGLE_PICKER_API_KEY': JSON.stringify(env.GOOGLE_PICKER_API_KEY),
+      'process.env.EVOLUTION_API_URL': JSON.stringify(env.EVOLUTION_API_URL || 'https://evolution.transmito.com'),
+      'process.env.EVOLUTION_GLOBAL_API_KEY': JSON.stringify(env.EVOLUTION_GLOBAL_API_KEY || '422A978A1131-44F7-A92D-C1E1C38214C2'),
       'process.env.API_KEY': JSON.stringify(env.API_KEY),
       'process.env.STRIPE_PUBLIC_KEY': JSON.stringify(env.STRIPE_PUBLIC_KEY),
       'process.env.FIREBASE_API_KEY': JSON.stringify(env.FIREBASE_API_KEY),
@@ -20,8 +22,6 @@ export default defineConfig(({ mode }) => {
       'process.env.FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.FIREBASE_MESSAGING_SENDER_ID),
       'process.env.FIREBASE_APP_ID': JSON.stringify(env.FIREBASE_APP_ID),
       'process.env.WHATSAPP_ACCESS_TOKEN': JSON.stringify(env.WHATSAPP_ACCESS_TOKEN),
-      'process.env.WAHA_API_URL': JSON.stringify(env.WAHA_API_URL || 'https://waha-app-fly.fly.dev'),
-      'process.env.WAHA_API_KEY': JSON.stringify(env.WAHA_API_KEY || '0eeb0aa6d6a64eedadd7f28fc642ec3f'),
     }
   };
 });

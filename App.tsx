@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { GoogleLogin } from './components/GoogleLogin';
 import { TransmitoDashboard } from './components/TransmitoDashboard';
-import { WahaSessionManager } from './components/WahaSessionManager';
+import { EvolutionSessionManager } from './components/EvolutionSessionManager';
 import { UserProfile, Contact } from './types';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, updateDoc, Timestamp, Firestore } from 'firebase/firestore';
@@ -44,6 +44,7 @@ const App: React.FC = () => {
 
   const fetchUserData = async (email: string) => {
     let whatsappNumber = undefined;
+    let apikey = undefined;
     let isValid = false;
     let expiryDate = undefined;
 
@@ -52,7 +53,8 @@ const App: React.FC = () => {
       return { 
         isValid: true, 
         expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        whatsappNumber: '5511999999999' 
+        whatsappNumber: '5511999999999',
+        apikey: 'test_token'
       };
     }
 
@@ -69,10 +71,11 @@ const App: React.FC = () => {
         isValid = data.isSubscribed && expiry > new Date();
         expiryDate = expiry.toISOString();
         whatsappNumber = data.whatsappNumber;
+        apikey = data.apikey;
       }
     } catch (e) { console.error(e); }
 
-    return { isValid, expiryDate, whatsappNumber };
+    return { isValid, expiryDate, whatsappNumber, apikey };
   };
 
   useEffect(() => {
@@ -85,7 +88,8 @@ const App: React.FC = () => {
           ...parsed, 
           isSubscribed: data.isValid, 
           expiryDate: data.expiryDate,
-          whatsappNumber: data.whatsappNumber
+          whatsappNumber: data.whatsappNumber,
+          apikey: data.apikey
         });
       }
       setIsInitializing(false);
@@ -100,31 +104,37 @@ const App: React.FC = () => {
       ...profile, 
       isSubscribed: data.isValid, 
       expiryDate: data.expiryDate,
-      whatsappNumber: data.whatsappNumber
+      whatsappNumber: data.whatsappNumber,
+      apikey: data.apikey
     };
     setUser(userProfile);
     localStorage.setItem('transmito_user', JSON.stringify(userProfile));
     setIsVerifyingSubscription(false);
   };
 
-  const updateWhatsappNumber = async (number: string) => {
+  const updateWhatsappNumber = async (number: string, apikey?: string) => {
     if (!user) return;
     const cleanNumber = number.replace(/\D/g, '');
     
     if (db) {
       try {
         const subRef = doc(db as Firestore, 'subscriptions', user.email);
-        await updateDoc(subRef, { whatsappNumber: cleanNumber });
+        const updateData: any = { whatsappNumber: cleanNumber };
+        if (apikey) updateData.apikey = apikey;
+        await updateDoc(subRef, updateData);
       } catch (e) {
-        console.error("Erro ao salvar número no Firebase:", e);
+        console.error("Erro ao salvar dados no Firebase:", e);
       }
     } else {
        const mock = localStorage.getItem(`mock_sub_${user.email}`);
        const data = mock ? JSON.parse(mock) : {};
-       localStorage.setItem(`mock_sub_${user.email}`, JSON.stringify({ ...data, whatsappNumber: cleanNumber }));
+       const newData = { ...data, whatsappNumber: cleanNumber };
+       if (apikey) newData.apikey = apikey;
+       localStorage.setItem(`mock_sub_${user.email}`, JSON.stringify(newData));
     }
 
     const updatedUser = { ...user, whatsappNumber: cleanNumber };
+    if (apikey) updatedUser.apikey = apikey;
     setUser(updatedUser);
     localStorage.setItem('transmito_user', JSON.stringify(updatedUser));
   };
@@ -149,7 +159,7 @@ const App: React.FC = () => {
 
   if (!isWhatsappConnected) {
     return (
-      <WahaSessionManager 
+      <EvolutionSessionManager 
         user={user}
         onSessionActive={() => setIsWhatsappConnected(true)} 
         onUpdateNumber={updateWhatsappNumber}
@@ -166,6 +176,7 @@ const App: React.FC = () => {
         message={message}
         setMessage={setMessage}
         onLogout={handleLogout}
+        onDisconnect={() => setIsWhatsappConnected(false)}
         onSubscribe={(expiry) => setUser({ ...user, isSubscribed: true, expiryDate: expiry })}
         onCancelSubscription={() => setUser({ ...user, isSubscribed: false })}
       />
