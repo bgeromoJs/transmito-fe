@@ -50,7 +50,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
 }) => {
   const [isSending, setIsSending] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
-  const [isOcrLoading, setIsOcrLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState<string>("✨ Otimizar com IA");
   const [isModalOpen, setIsModalOpen] = useState(initialShowSubscription || false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -149,7 +148,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     setIsImproving(true);
     setAiStatus("✨ Processando...");
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '' });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: `Melhore o seguinte texto de mensagem para WhatsApp, tornando-o mais profissional e persuasivo, mantendo a clareza. Retorne APENAS o texto melhorado:\n\n${message}`,
@@ -164,56 +163,6 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       setTimeout(() => setAiStatus("✨ Otimizar com IA"), 3000);
     } finally {
       setIsImproving(false);
-    }
-  };
-
-  const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!user.isSubscribed && user.email !== 'teste@transmito.com') {
-      e.target.value = '';
-      return setIsModalOpen(true);
-    }
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setIsOcrLoading(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const base64 = (reader.result as string).split(',')[1];
-        const ai = new GoogleGenAI({ apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '' });
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: {
-            parts: [
-              { inlineData: { data: base64, mimeType: file.type } },
-              { text: "Extraia os contatos desta imagem (planilha ou lista). Retorne um JSON no formato: [{\"name\": \"Nome\", \"phone\": \"5511999999999\"}]. Retorne APENAS o JSON válido." }
-            ]
-          }
-        });
-        
-        if (response.text) {
-          try {
-            const jsonStr = response.text.replace(/```json|```/g, '').trim();
-            const extracted: any[] = JSON.parse(jsonStr);
-            const newContacts: Contact[] = extracted.map((c, i) => ({
-              id: `ocr-${Date.now()}-${i}`,
-              name: c.name || 'Contato Extraído',
-              phone: c.phone.replace(/\D/g, ''),
-              sentCount: 0,
-              failCount: 0,
-              selected: true
-            }));
-            setContacts(prev => [...prev, ...newContacts]);
-          } catch (err) {
-            alert("Não foi possível processar os contatos da imagem. Tente uma foto mais clara.");
-          }
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (e) {
-      alert("Erro ao processar imagem.");
-    } finally {
-      setIsOcrLoading(false);
-      e.target.value = '';
     }
   };
 
@@ -509,27 +458,11 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
              </div>
              
              <FileUpload 
-               onDataExtracted={setContacts} 
+               onDataExtracted={(newContacts) => setContacts(prev => [...prev, ...newContacts])} 
                isSubscribed={user.isSubscribed || false}
                onShowSubscription={() => setIsModalOpen(true)}
                isDemo={user.email === 'teste@transmito.com'}
              />
-
-             <div className="pt-4 border-t border-slate-50">
-               <div className="flex items-center gap-3">
-                 <label className={`flex-1 flex items-center justify-center gap-2 p-4 rounded-2xl border cursor-pointer transition-all ${isOcrLoading ? 'opacity-50' : ''} ${!user.isSubscribed && user.email !== 'teste@transmito.com' ? 'bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100' : 'bg-blue-50 border-blue-100 text-blue-600 hover:bg-blue-100'}`}>
-                   {!user.isSubscribed && user.email !== 'teste@transmito.com' ? (
-                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
-                   ) : (
-                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                   )}
-                   <span className="text-[10px] font-black uppercase tracking-widest">
-                     {!user.isSubscribed && user.email !== 'teste@transmito.com' ? 'Extrair de Foto (PRO)' : (isOcrLoading ? 'Processando...' : 'Extrair de Foto')}
-                   </span>
-                   <input type="file" accept="image/*" className="hidden" onChange={handleOcrUpload} disabled={isOcrLoading} />
-                 </label>
-               </div>
-             </div>
           </section>
         </div>
 

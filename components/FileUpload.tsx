@@ -26,7 +26,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted, isSubsc
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDriveLoading, setIsDriveLoading] = useState(false);
+  const [isManualActive, setIsManualActive] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
 
   const canUsePremium = isSubscribed || isDemo;
 
@@ -116,7 +120,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted, isSubsc
     const base64 = canvasRef.current.toDataURL('image/jpeg', 0.8).split(',')[1];
     setIsCameraActive(false);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: {
@@ -178,6 +182,70 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted, isSubsc
     }
   };
 
+  const handleOcrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsAnalyzing(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = (reader.result as string).split(',')[1];
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: {
+            parts: [
+              { inlineData: { data: base64, mimeType: file.type } },
+              { text: "Extraia os contatos desta imagem (planilha ou lista). Retorne um JSON no formato: [{\"name\": \"Nome\", \"phone\": \"5511999999999\"}]. Retorne APENAS o JSON válido." }
+            ]
+          }
+        });
+        
+        if (response.text) {
+          try {
+            const jsonStr = response.text.replace(/```json|```/g, '').trim();
+            const extracted: any[] = JSON.parse(jsonStr);
+            const newContacts: Contact[] = extracted.map((c, i) => ({
+              id: `ocr-${Date.now()}-${i}`,
+              name: c.name || 'Contato Extraído',
+              phone: formatPhoneNumber(c.phone),
+              sentCount: 0,
+              failCount: 0,
+              selected: true
+            }));
+            onDataExtracted(newContacts);
+            setIsCameraActive(false);
+          } catch (err) {
+            setError("Não foi possível processar a imagem.");
+          }
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (e) {
+      setError("Erro ao processar imagem.");
+    } finally {
+      setIsAnalyzing(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleManualAdd = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualName || !manualPhone) return;
+    const newContact: Contact = {
+      id: `manual-${Date.now()}`,
+      name: manualName.trim(),
+      phone: formatPhoneNumber(manualPhone),
+      sentCount: 0,
+      failCount: 0,
+      selected: true
+    };
+    onDataExtracted([newContact]);
+    setManualName('');
+    setManualPhone('');
+    setIsManualActive(false);
+  };
+
   const handleCameraClick = () => {
     if (!canUsePremium) return onShowSubscription();
     setIsCameraActive(true);
@@ -185,7 +253,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted, isSubsc
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <button 
           onClick={handleCameraClick} 
           className={`p-4 border rounded-2xl flex flex-col items-center gap-2 transition-all group ${!canUsePremium ? 'bg-amber-50 border-amber-100' : 'border-slate-200 hover:bg-slate-50'}`}
@@ -195,11 +263,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted, isSubsc
           ) : (
             <svg className="w-6 h-6 text-amber-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" /></svg>
           )}
-          <span className={`text-[10px] font-black uppercase tracking-widest ${!canUsePremium ? 'text-amber-600' : 'text-slate-500'}`}>Câmera {!canUsePremium && '(PRO)'}</span>
+          <span className={`text-[9px] font-black uppercase tracking-widest ${!canUsePremium ? 'text-amber-600' : 'text-slate-500'}`}>Câmera {!canUsePremium && '(PRO)'}</span>
         </button>
         <button onClick={() => fileInputRef.current?.click()} className="p-4 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-2 transition-all group">
           <svg className="w-6 h-6 text-slate-400 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-          <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">CSV</span>
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">CSV</span>
+        </button>
+        <button onClick={() => setIsManualActive(true)} className="p-4 border border-slate-200 rounded-2xl hover:bg-slate-50 flex flex-col items-center gap-2 transition-all group">
+          <svg className="w-6 h-6 text-slate-400 group-hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+          <span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Manual</span>
         </button>
       </div>
       
@@ -215,13 +287,34 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onDataExtracted, isSubsc
         Google Drive {!canUsePremium && '(PRO)'}
       </button>
 
+      {isManualActive && (
+        <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 animate-in slide-in-from-top-2">
+          <div className="flex justify-between items-center mb-4">
+            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adicionar Contato</h4>
+            <button onClick={() => setIsManualActive(false)} className="text-slate-400 hover:text-slate-600"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+          </div>
+          <form onSubmit={handleManualAdd} className="space-y-3">
+            <input type="text" value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Nome do contato" className="w-full p-4 bg-white border border-slate-100 rounded-xl text-sm outline-none focus:border-blue-400" required />
+            <input type="tel" value={manualPhone} onChange={(e) => setManualPhone(e.target.value)} placeholder="Telefone (ex: 11999999999)" className="w-full p-4 bg-white border border-slate-100 rounded-xl text-sm outline-none focus:border-blue-400" required />
+            <button type="submit" className="w-full py-4 bg-blue-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-100">Adicionar</button>
+          </form>
+        </div>
+      )}
+
       <div className="flex justify-center pt-2">
         <button onClick={downloadTemplate} className="flex items-center gap-2 px-6 py-3 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-100">Baixar Template</button>
       </div>
       <input type="file" ref={fileInputRef} hidden accept=".csv" onChange={handleCsvUpload} />
+      <input type="file" ref={galleryInputRef} hidden accept="image/*" onChange={handleOcrUpload} />
       {isCameraActive && (
         <div className="fixed inset-0 z-[110] bg-black flex flex-col h-[100dvh]">
-          <div className="p-6 flex justify-between items-center text-white"><button onClick={() => setIsCameraActive(false)} className="text-xs font-black uppercase bg-white/10 px-4 py-2 rounded-full">Fechar</button></div>
+          <div className="p-6 flex justify-between items-center text-white">
+            <button onClick={() => setIsCameraActive(false)} className="text-xs font-black uppercase bg-white/10 px-4 py-2 rounded-full">Fechar</button>
+            <button onClick={() => galleryInputRef.current?.click()} className="text-xs font-black uppercase bg-white/10 px-4 py-2 rounded-full flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+              Galeria
+            </button>
+          </div>
           <video ref={videoRef} autoPlay playsInline muted className="flex-1 object-cover" />
           <div className="p-12 flex justify-center bg-black/95"><button onClick={handleCapture} className="w-20 h-20 bg-white rounded-full border-[6px] border-slate-300"></button></div>
         </div>
