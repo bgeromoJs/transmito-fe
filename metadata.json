@@ -1,6 +1,6 @@
 {
-  "name": "Transmito  - 1.1.0",
-  "description": "A powerful broadcast tool for WhatsApp. Import contacts from CSV or Google Drive, craft your message, and transmit to your list with ease.",
+  "name": "Transmito AI - WhatsApp Broadcast",
+  "description": "Ferramenta profissional de transmissão para WhatsApp com inteligência artificial. Extração de contatos por foto (OCR), otimização de mensagens com IA e gestão de planos Free/Premium.",
   "requestFramePermissions": [
     "camera"
   ]
