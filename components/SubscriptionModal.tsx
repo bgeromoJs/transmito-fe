@@ -146,6 +146,14 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, on
         <div className="p-8 sm:p-10">
           {step === 'SELECTION' && (
             <div className="space-y-6">
+              <div className="p-5 bg-blue-50 rounded-2xl border border-blue-100">
+                 <h4 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-2">Benefícios Premium</h4>
+                 <ul className="text-[11px] font-bold text-blue-800 space-y-1">
+                   <li className="flex items-center gap-2">✅ Envios Ilimitados (sem limite de 10/dia)</li>
+                   <li className="flex items-center gap-2">✅ Suporte Prioritário</li>
+                   <li className="flex items-center gap-2">✅ Otimização com IA Ilimitada</li>
+                 </ul>
+              </div>
               <div className="space-y-3">
                 {PLANS.map((plan) => (
                   <button

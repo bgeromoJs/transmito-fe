@@ -16,6 +16,7 @@ interface DashboardProps {
   onDisconnect: () => void;
   onSubscribe: (expiryDate?: string) => void;
   onCancelSubscription: () => void;
+  onIncrementUsage: (count: number) => Promise<void>;
 }
 
 interface TransmissionStatus {
@@ -42,7 +43,8 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   onLogout,
   onDisconnect,
   onSubscribe,
-  onCancelSubscription
+  onCancelSubscription,
+  onIncrementUsage
 }) => {
   const [isSending, setIsSending] = useState(false);
   const [isImproving, setIsImproving] = useState(false);
@@ -139,7 +141,20 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
   const handleTransmit = async () => {
     // Verificação de bypass para teste
     const isDemo = user.email === 'teste@transmito.com';
-    if (!user.isSubscribed && !isDemo) return setIsModalOpen(true);
+    
+    // Check daily limit for free users
+    if (!user.isSubscribed && !isDemo) {
+      const remaining = (user.dailyLimit || 10) - (user.messagesSentToday || 0);
+      if (remaining <= 0) {
+        alert("Você atingiu o limite diário do plano gratuito (10 mensagens). Faça o upgrade para enviar ilimitado!");
+        return setIsModalOpen(true);
+      }
+      if (selectedQueue.length > remaining) {
+        if (!window.confirm(`Você tem apenas ${remaining} envios restantes hoje no plano gratuito. Deseja enviar apenas para os primeiros ${remaining} contatos?`)) {
+          return setIsModalOpen(true);
+        }
+      }
+    }
     
     if (!message.trim() || selectedQueue.length === 0) return alert('Escreva a mensagem e selecione pelo menos um contato.');
 
@@ -147,8 +162,12 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     shouldStopRef.current = false;
     await requestWakeLock();
     
+    const actualQueue = (!user.isSubscribed && !isDemo) 
+      ? selectedQueue.slice(0, (user.dailyLimit || 10) - (user.messagesSentToday || 0))
+      : selectedQueue;
+
     setTransmission({ 
-      total: selectedQueue.length, 
+      total: actualQueue.length, 
       sent: 0, 
       errors: 0, 
       currentName: 'Iniciando...', 
@@ -160,10 +179,10 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
     let updatedContacts = [...contacts];
 
     try {
-      for (let i = 0; i < selectedQueue.length; i++) {
+      for (let i = 0; i < actualQueue.length; i++) {
         if (shouldStopRef.current) break;
 
-        const contact = selectedQueue[i];
+        const contact = actualQueue[i];
         let success = false;
         
         try {
@@ -174,7 +193,12 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         
         if (shouldStopRef.current) break;
 
-        if (success) localSent++; else localErrors++;
+        if (success) {
+          localSent++;
+          await onIncrementUsage(1);
+        } else {
+          localErrors++;
+        }
         
         // Atualiza o status e os contadores na lista principal
         updatedContacts = updatedContacts.map(c => {
@@ -199,7 +223,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
         }) : null);
 
         // Aguarda delay apenas se habilitado e não for o último
-        if (i < selectedQueue.length - 1 && !shouldStopRef.current && isDelayEnabled) {
+        if (i < actualQueue.length - 1 && !shouldStopRef.current && isDelayEnabled) {
           const waitTime = isDemo ? 5 : delay;
           setNextSendCountdown(waitTime);
           for (let s = waitTime; s > 0; s--) {
@@ -208,7 +232,7 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
             await new Promise(r => setTimeout(r, 1000));
           }
           setNextSendCountdown(0);
-        } else if (i < selectedQueue.length - 1 && !shouldStopRef.current && !isDelayEnabled) {
+        } else if (i < actualQueue.length - 1 && !shouldStopRef.current && !isDelayEnabled) {
           await new Promise(r => setTimeout(r, 100));
         }
       }
@@ -316,23 +340,31 @@ export const TransmitoDashboard: React.FC<DashboardProps> = ({
       )}
 
       <header className="sticky top-2 z-40 bg-white/90 backdrop-blur-md border border-slate-200 rounded-2xl p-3 flex items-center justify-between shadow-xl">
-        <div className="relative" ref={menuRef}>
-          <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-10 h-10 rounded-full overflow-hidden border-2 border-slate-100 active:scale-90 transition-all shadow-sm">
-            <img src={user.picture} className="w-full h-full object-cover" />
-          </button>
-          {showProfileMenu && (
-            <div className="absolute top-full left-0 mt-3 w-64 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl p-2 border border-slate-100 animate-in fade-in slide-in-from-top-2">
-              <div className="px-4 py-3 border-b border-slate-50 mb-1">
-                 <p className="text-xs font-black text-slate-800 truncate">{user.name}</p>
-                 <p className="text-[9px] font-bold text-slate-400 truncate">{user.email}</p>
+        <div className="flex items-center gap-3">
+          <div className="relative" ref={menuRef}>
+            <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="w-10 h-10 rounded-full overflow-hidden border-2 border-slate-100 active:scale-90 transition-all shadow-sm">
+              <img src={user.picture} className="w-full h-full object-cover" />
+            </button>
+            {showProfileMenu && (
+              <div className="absolute top-full left-0 mt-3 w-64 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl p-2 border border-slate-100 animate-in fade-in slide-in-from-top-2">
+                <div className="px-4 py-3 border-b border-slate-50 mb-1">
+                   <p className="text-xs font-black text-slate-800 truncate">{user.name}</p>
+                   <p className="text-[9px] font-bold text-slate-400 truncate">{user.email}</p>
+                </div>
+                <button onClick={onLogout} className="w-full text-left p-3 text-[11px] font-black text-red-500 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>ENCERRAR SESSÃO</button>
+                <button onClick={handleDisconnect} className="w-full text-left p-3 text-[11px] font-black text-orange-500 hover:bg-orange-50 rounded-xl flex items-center gap-2 transition-colors">
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                   </svg>
+                   DESCONECTAR WHATSAPP
+                 </button>
               </div>
-              <button onClick={onLogout} className="w-full text-left p-3 text-[11px] font-black text-red-500 hover:bg-red-50 rounded-xl flex items-center gap-2 transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>ENCERRAR SESSÃO</button>
-              <button onClick={handleDisconnect} className="w-full text-left p-3 text-[11px] font-black text-orange-500 hover:bg-orange-50 rounded-xl flex items-center gap-2 transition-colors">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                 </svg>
-                 DESCONECTAR WHATSAPP
-               </button>
+            )}
+          </div>
+          {!user.isSubscribed && (
+            <div className="hidden sm:flex flex-col">
+              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Plano Free</p>
+              <p className="text-[11px] font-bold text-slate-600">{(user.dailyLimit || 10) - (user.messagesSentToday || 0)} envios restantes</p>
             </div>
           )}
         </div>

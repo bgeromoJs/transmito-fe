@@ -17,6 +17,9 @@ export interface UserProfile {
   apikey?: string; // Evolution API instance token
   isSubscribed?: boolean;
   expiryDate?: string; // ISO String or Timestamp string
+  dailyLimit?: number;
+  messagesSentToday?: number;
+  lastResetDate?: string; // YYYY-MM-DD
 }
 
 export interface AppState {

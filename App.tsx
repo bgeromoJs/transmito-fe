@@ -5,7 +5,7 @@ import { TransmitoDashboard } from './components/TransmitoDashboard';
 import { EvolutionSessionManager } from './components/EvolutionSessionManager';
 import { UserProfile, Contact } from './types';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, updateDoc, Timestamp, Firestore } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, updateDoc, setDoc, Timestamp, Firestore } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: process.env.FIREBASE_API_KEY,
@@ -47,6 +47,9 @@ const App: React.FC = () => {
     let apikey = undefined;
     let isValid = false;
     let expiryDate = undefined;
+    let dailyLimit = 10;
+    let messagesSentToday = 0;
+    let lastResetDate = new Date().toISOString().split('T')[0];
 
     // Test account rules
     if (email === 'teste@transmito.com') {
@@ -54,13 +57,16 @@ const App: React.FC = () => {
         isValid: true, 
         expiryDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
         whatsappNumber: '5511999999999',
-        apikey: 'test_token'
+        apikey: 'test_token',
+        dailyLimit: 9999,
+        messagesSentToday: 0,
+        lastResetDate: new Date().toISOString().split('T')[0]
       };
     }
 
     if (!db) {
       const mock = localStorage.getItem(`mock_sub_${email}`);
-      return mock ? JSON.parse(mock) : { isValid: false };
+      return mock ? JSON.parse(mock) : { isValid: false, dailyLimit: 10, messagesSentToday: 0, lastResetDate: new Date().toISOString().split('T')[0] };
     }
 
     try {
@@ -72,10 +78,35 @@ const App: React.FC = () => {
         expiryDate = expiry.toISOString();
         whatsappNumber = data.whatsappNumber;
         apikey = data.apikey;
+        dailyLimit = isValid ? 9999 : 10;
+        
+        const today = new Date().toISOString().split('T')[0];
+        if (data.lastResetDate !== today) {
+          messagesSentToday = 0;
+          lastResetDate = today;
+          // Async update reset
+          updateDoc(doc(db as Firestore, 'subscriptions', email), {
+            messagesSentToday: 0,
+            lastResetDate: today
+          }).catch(console.error);
+        } else {
+          messagesSentToday = data.messagesSentToday || 0;
+          lastResetDate = data.lastResetDate;
+        }
+      } else {
+        // Create initial record for new user
+        const today = new Date().toISOString().split('T')[0];
+        await setDoc(doc(db as Firestore, 'subscriptions', email), {
+          email,
+          isSubscribed: false,
+          dailyLimit: 10,
+          messagesSentToday: 0,
+          lastResetDate: today
+        });
       }
     } catch (e) { console.error(e); }
 
-    return { isValid, expiryDate, whatsappNumber, apikey };
+    return { isValid, expiryDate, whatsappNumber, apikey, dailyLimit, messagesSentToday, lastResetDate };
   };
 
   useEffect(() => {
@@ -89,7 +120,10 @@ const App: React.FC = () => {
           isSubscribed: data.isValid, 
           expiryDate: data.expiryDate,
           whatsappNumber: data.whatsappNumber,
-          apikey: data.apikey
+          apikey: data.apikey,
+          dailyLimit: data.dailyLimit,
+          messagesSentToday: data.messagesSentToday,
+          lastResetDate: data.lastResetDate
         });
       }
       setIsInitializing(false);
@@ -105,7 +139,10 @@ const App: React.FC = () => {
       isSubscribed: data.isValid, 
       expiryDate: data.expiryDate,
       whatsappNumber: data.whatsappNumber,
-      apikey: data.apikey
+      apikey: data.apikey,
+      dailyLimit: data.dailyLimit,
+      messagesSentToday: data.messagesSentToday,
+      lastResetDate: data.lastResetDate
     };
     setUser(userProfile);
     localStorage.setItem('transmito_user', JSON.stringify(userProfile));
@@ -135,6 +172,26 @@ const App: React.FC = () => {
 
     const updatedUser = { ...user, whatsappNumber: cleanNumber };
     if (apikey) updatedUser.apikey = apikey;
+    setUser(updatedUser);
+    localStorage.setItem('transmito_user', JSON.stringify(updatedUser));
+  };
+
+  const incrementUsage = async (count: number) => {
+    if (!user) return;
+    const newCount = (user.messagesSentToday || 0) + count;
+    
+    if (db) {
+      try {
+        const subRef = doc(db as Firestore, 'subscriptions', user.email);
+        await updateDoc(subRef, { messagesSentToday: newCount });
+      } catch (e) { console.error(e); }
+    } else {
+      const mock = localStorage.getItem(`mock_sub_${user.email}`);
+      const data = mock ? JSON.parse(mock) : {};
+      localStorage.setItem(`mock_sub_${user.email}`, JSON.stringify({ ...data, messagesSentToday: newCount }));
+    }
+
+    const updatedUser = { ...user, messagesSentToday: newCount };
     setUser(updatedUser);
     localStorage.setItem('transmito_user', JSON.stringify(updatedUser));
   };
@@ -178,7 +235,8 @@ const App: React.FC = () => {
         setMessage={setMessage}
         onLogout={handleLogout}
         onDisconnect={() => setIsWhatsappConnected(false)}
-        onSubscribe={(expiry) => setUser({ ...user, isSubscribed: true, expiryDate: expiry })}
+        onIncrementUsage={incrementUsage}
+        onSubscribe={(expiry) => setUser({ ...user, isSubscribed: true, expiryDate: expiry, dailyLimit: 9999 })}
         onCancelSubscription={() => setUser({ ...user, isSubscribed: false })}
       />
     </div>
