@@ -116,7 +116,9 @@ export const EvolutionSessionManager: React.FC<EvolutionSessionManagerProps> = (
           body: JSON.stringify({
             instanceName: instanceName,
             qrcode: true,
-            integration: "WHATSAPP-BAILEYS"
+            integration: "WHATSAPP-BAILEYS",
+            rejectCall: false,
+            alwaysOnline: false
           })
         });
 
